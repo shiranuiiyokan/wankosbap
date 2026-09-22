@@ -1,0 +1,67 @@
+name: Public render worker smoke test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/public-render-worker-smoke.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Start VOICEVOX
+        run: |
+          docker pull voicevox/voicevox_engine:cpu-latest
+          docker run -d --name voicevox -p 127.0.0.1:50021:50021 voicevox/voicevox_engine:cpu-latest
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:50021/version > /tmp/voicevox_version.txt; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs voicevox
+          exit 1
+
+      - name: Synthesize test narration
+        run: |
+          curl -fsS -G --data-urlencode 'text=パブリック実行環境の音声テストです。' --data-urlencode 'speaker=3' \
+            http://127.0.0.1:50021/audio_query > /tmp/query.json
+          curl -fsS -H 'Content-Type: application/json' -X POST -d @/tmp/query.json \
+            'http://127.0.0.1:50021/synthesis?speaker=3' > /tmp/test.wav
+          test -s /tmp/test.wav
+
+      - name: Render small test video
+        run: |
+          ffmpeg -y -f lavfi -i color=c=black:s=1280x720:r=30 -i /tmp/test.wav \
+            -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest /tmp/test.mp4
+          test -s /tmp/test.mp4
+          ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 /tmp/test.mp4 > /tmp/duration.txt
+
+      - name: Record result
+        run: |
+          {
+            echo "PASS"
+            echo "VOICEVOX=$(cat /tmp/voicevox_version.txt)"
+            echo "FFMPEG=$(ffmpeg -version | head -n 1)"
+            echo "DURATION=$(cat /tmp/duration.txt)"
+            echo "RUN_ID=$GITHUB_RUN_ID"
+          } > public-worker-smoke-result.txt
+
+          git config user.name "public-video-worker-bot"
+          git config user.email "public-video-worker-bot@users.noreply.github.com"
+          git add public-worker-smoke-result.txt
+          git diff --cached --quiet || git commit -m "Public worker smoke test passed [skip ci]"
+          git push origin HEAD:main
