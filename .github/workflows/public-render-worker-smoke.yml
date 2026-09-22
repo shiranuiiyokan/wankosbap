@@ -37,7 +37,7 @@ jobs:
 
       - name: Synthesize test narration
         run: |
-          curl -fsS -G --data-urlencode 'text=パブリック実行環境の音声テストです。' --data-urlencode 'speaker=3' \
+          curl -fsS -X POST -G --data-urlencode 'text=パブリック実行環境の音声テストです。' --data-urlencode 'speaker=3' \
             http://127.0.0.1:50021/audio_query > /tmp/query.json
           curl -fsS -H 'Content-Type: application/json' -X POST -d @/tmp/query.json \
             'http://127.0.0.1:50021/synthesis?speaker=3' > /tmp/test.wav
