@@ -1,0 +1,5 @@
+PASS
+VOICEVOX="0.25.2"
+FFMPEG=ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers
+DURATION=3.317000
+RUN_ID=35799465403
