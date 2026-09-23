@@ -10,13 +10,7 @@ The worker code contains no Google Drive folder IDs, OAuth tokens, service-accou
 - YOUTUBE_CLIENT_ID
 - YOUTUBE_CLIENT_SECRET
 - YOUTUBE_REFRESH_TOKEN
-- SCHEDULED_DOG_FOLDER_ID
-- SCHEDULED_MBTI_FOLDER_ID
-- SCHEDULED_CAT_FOLDER_ID
-- SCHEDULED_LONG_FOLDER_ID
-- SCHEDULED_DONE_FOLDER_ID
-- SCHEDULED_ERROR_FOLDER_ID
 
-Until those secrets exist, the production workflow stays manual-only. Pushes only run a syntax validation job.
+The Google Drive folder IDs are non-credential identifiers and are configured in the workflow. Until the four credentials above exist, the production workflow stays manual-only. Pushes only run a syntax validation job.
 
 After credentials are installed and a dry run succeeds, the workflow can be switched to one scheduled batch per day.
