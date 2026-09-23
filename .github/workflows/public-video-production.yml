@@ -6,6 +6,8 @@ on:
     paths:
       - "video-worker/**"
       - ".github/workflows/public-video-production.yml"
+  schedule:
+    - cron: "0 12 * * *" # 21:00 JST
   workflow_dispatch:
     inputs:
       dry_run:
@@ -29,9 +31,32 @@ jobs:
       - name: Syntax check
         run: python -m py_compile video-worker/*.py
 
-  produce:
-    if: github.event_name == 'workflow_dispatch'
+  credential-gate:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     needs: validate
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          DRIVE_OK: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          YT_ID_OK: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YT_SECRET_OK: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YT_REFRESH_OK: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+        shell: bash
+        run: |
+          if [ -n "$DRIVE_OK" ] && [ -n "$YT_ID_OK" ] && [ -n "$YT_SECRET_OK" ] && [ -n "$YT_REFRESH_OK" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "All production credentials are configured."
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Production skipped: one or more required repository secrets are missing."
+          fi
+
+  produce:
+    if: needs.credential-gate.outputs.ready == 'true'
+    needs: [validate, credential-gate]
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
@@ -61,7 +86,7 @@ jobs:
           docker logs voicevox
           exit 1
 
-      - name: Render and optionally upload
+      - name: Render and upload directly to YouTube
         working-directory: video-worker
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
