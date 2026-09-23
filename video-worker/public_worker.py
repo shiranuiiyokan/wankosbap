@@ -223,6 +223,21 @@ def fallback_publish_at(category, index, now=None):
     return candidates[index % len(candidates)].isoformat()
 
 
+def resolve_publish_at(manifest, category, publish_index):
+    raw = manifest.get("publish_at")
+    if raw:
+        try:
+            parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=JST)
+            if parsed.astimezone(JST) > datetime.now(JST) + timedelta(minutes=10):
+                return parsed.isoformat()
+            print(f"STALE publish_at={raw}; using next future slot for {category}", flush=True)
+        except Exception:
+            print(f"INVALID publish_at={raw}; using next future slot for {category}", flush=True)
+    return fallback_publish_at(category, publish_index)
+
+
 def normalize_job(manifest, category, folder_name, job_dir, publish_index):
     project_id = manifest.get("project_id") or manifest.get("企画ID") or manifest.get("job_id") or folder_name
     series = str(manifest.get("series") or category).lower()
@@ -289,7 +304,7 @@ def normalize_job(manifest, category, folder_name, job_dir, publish_index):
         "series": series,
         "category": category,
         "title": title,
-        "publish_at": manifest.get("publish_at") or fallback_publish_at(category, publish_index),
+        "publish_at": resolve_publish_at(manifest, category, publish_index),
         "youtube": youtube,
         "video": video,
         "voice": dict(manifest.get("voice") or {}),
