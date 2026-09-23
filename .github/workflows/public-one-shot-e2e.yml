@@ -54,5 +54,19 @@ jobs:
           LONG_VOICE_SPEED: "1.25"
           VOICEVOX_SPEAKER_NAME: "ずんだもん"
           VOICEVOX_STYLE_NAME: "ノーマル"
-          DRY_RUN: "false"
+          DRY_RUN: "true"
         run: python public_worker.py
+
+      - name: Package rendered MP4
+        run: |
+          test -n "$(find video-worker/output -type f -name '*.mp4' -print -quit)"
+          mkdir -p artifact-out
+          cp "$(find video-worker/output -type f -name '*.mp4' -print -quit)" artifact-out/public_rendered.mp4
+
+      - name: Upload rendered video artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-render-e2e
+          path: artifact-out/public_rendered.mp4
+          retention-days: 1
+          if-no-files-found: error
