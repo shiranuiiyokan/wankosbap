@@ -11,7 +11,6 @@ from googleapiclient.http import MediaIoBaseUpload
 from drive_client import build_drive_service, download_file
 from scheduled_renderer import render_scheduled_job
 from voicevox import synthesize, wait_until_ready
-from youtube_upload import upload_video
 
 ROOT = Path(__file__).parent
 WORK_ROOT = ROOT / "work"
@@ -123,6 +122,43 @@ def upsert_json(service, folder_id, filename, data):
         fields="id,name",
         supportsAllDrives=True,
     ).execute()
+
+
+def upload_binary(service, folder_id, filename, path: Path, mimetype="video/mp4"):
+    media = MediaIoBaseUpload(path.open("rb"), mimetype=mimetype, resumable=True)
+    q = f"'{folder_id}' in parents and name='{filename}' and trashed=false"
+    found = service.files().list(
+        q=q,
+        pageSize=10,
+        fields="files(id,name)",
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True,
+    ).execute().get("files", [])
+    if found:
+        return service.files().update(
+            fileId=found[0]["id"],
+            media_body=media,
+            fields="id,name",
+            supportsAllDrives=True,
+        ).execute()
+    return service.files().create(
+        body={"name": filename, "parents": [folder_id]},
+        media_body=media,
+        fields="id,name",
+        supportsAllDrives=True,
+    ).execute()
+
+
+def find_child_by_name(service, folder_id, filename):
+    q = f"'{folder_id}' in parents and name='{filename}' and trashed=false"
+    files = service.files().list(
+        q=q,
+        pageSize=10,
+        fields="files(id,name,mimeType,size)",
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True,
+    ).execute().get("files", [])
+    return files[0] if files else None
 
 
 def find_manifest(job_dir: Path):
@@ -270,16 +306,18 @@ def process_one(service, category, source_parent, folder, publish_index, dry_run
     out_dir = OUTPUT_ROOT / category / folder["id"]
     shutil.rmtree(job_dir, ignore_errors=True)
     shutil.rmtree(out_dir, ignore_errors=True)
+
+    # If YouTube already has this job, the private uploader will finish/move it.
+    if find_child_by_name(service, folder["id"], "youtube_result.json"):
+        print(f"SKIP already uploaded: {folder['name']}", flush=True)
+        return {"status": "uploaded"}
+
+    # Idempotency: a successful public render is stored back in the private Drive folder.
+    if find_child_by_name(service, folder["id"], "public_rendered.mp4"):
+        print(f"SKIP already rendered: {folder['name']}", flush=True)
+        return {"status": "rendered"}
+
     download_folder_recursive(service, folder["id"], job_dir)
-
-    prior = read_json(job_dir / "youtube_result.json", {})
-    if prior.get("video_id"):
-        if not dry_run:
-            move_folder(service, folder["id"], source_parent, required_env("SCHEDULED_DONE_FOLDER_ID"))
-        print(f"RECOVER uploaded folder without duplicate upload: {folder['name']}", flush=True)
-        return {"status": "done", **prior}
-
-    state = read_json(job_dir / "worker_state.json", {"retry_count": 0})
     manifest_path = find_manifest(job_dir)
     if not manifest_path:
         raise ValueError("manifest.json/job.json/metadata.json is missing")
@@ -290,16 +328,22 @@ def process_one(service, category, source_parent, folder, publish_index, dry_run
     try:
         wait_until_ready()
         video = render_scheduled_job(job, job_dir, out_dir, synthesize)
+        result = {
+            "project_id": job["project_id"],
+            "category": category,
+            "rendered_at": datetime.now(JST).isoformat(),
+            "filename": "public_rendered.mp4",
+        }
         if dry_run:
-            print(json.dumps({"status": "rendered", "project_id": job["project_id"], "video": str(video)}, ensure_ascii=False), flush=True)
-            return {"status": "rendered", "project_id": job["project_id"]}
-        result = upload_video(video, job)
-        result.update({"project_id": job["project_id"], "category": category, "completed_at": datetime.now(JST).isoformat()})
-        upsert_json(service, folder["id"], "youtube_result.json", result)
-        move_folder(service, folder["id"], source_parent, required_env("SCHEDULED_DONE_FOLDER_ID"))
-        print("UPLOAD_RESULT=" + json.dumps(result, ensure_ascii=False), flush=True)
-        return {"status": "done", **result}
+            print("PUBLIC_RENDER_DRY_RUN=" + json.dumps(result, ensure_ascii=False), flush=True)
+            return {"status": "rendered", **result}
+
+        upload_binary(service, folder["id"], "public_rendered.mp4", video, "video/mp4")
+        upsert_json(service, folder["id"], "public_render_result.json", result)
+        print("PUBLIC_RENDER_RESULT=" + json.dumps(result, ensure_ascii=False), flush=True)
+        return {"status": "rendered", **result}
     except Exception as exc:
+        state = read_json(job_dir / "worker_state.json", {"retry_count": 0})
         retries = int(state.get("retry_count", 0)) + 1
         error_state = {
             "retry_count": retries,
@@ -308,12 +352,6 @@ def process_one(service, category, source_parent, folder, publish_index, dry_run
         }
         if not dry_run:
             upsert_json(service, folder["id"], "worker_state.json", error_state)
-            max_attempts = max(1, int(os.getenv("MAX_ATTEMPTS", "3")))
-            if retries >= max_attempts:
-                try:
-                    move_folder(service, folder["id"], source_parent, required_env("SCHEDULED_ERROR_FOLDER_ID"))
-                except Exception:
-                    pass
         raise
     finally:
         if old_speed is None:
@@ -352,7 +390,7 @@ def main():
                 print(traceback.format_exc(limit=8), flush=True)
 
     summary = {"processed": processed, "failures": failures, "dry_run": dry_run, "limits": limits}
-    print("PUBLIC_WORKER_SUMMARY=" + json.dumps(summary, ensure_ascii=False), flush=True)
+    print("PUBLIC_RENDER_SUMMARY=" + json.dumps(summary, ensure_ascii=False), flush=True)
     if failures and processed == 0:
         raise SystemExit(1)
 
