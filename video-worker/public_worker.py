@@ -11,6 +11,7 @@ from googleapiclient.http import MediaIoBaseUpload
 from drive_client import build_drive_service, download_file
 from scheduled_renderer import render_scheduled_job
 from voicevox import synthesize, wait_until_ready
+from youtube_upload import upload_video
 
 ROOT = Path(__file__).parent
 WORK_ROOT = ROOT / "work"
@@ -96,6 +97,22 @@ def move_folder(service, folder_id, from_parent, to_parent):
         fields="id,parents",
         supportsAllDrives=True,
     ).execute()
+
+
+def rename_folder(service, folder_id, new_name):
+    service.files().update(
+        fileId=folder_id,
+        body={"name": new_name},
+        fields="id,name",
+        supportsAllDrives=True,
+    ).execute()
+
+
+def _extract_uploaded_video_id(folder_name):
+    marker = "__YT_"
+    if marker not in folder_name:
+        return None
+    return folder_name.split(marker, 1)[1].split("__", 1)[0].strip() or None
 
 
 def upsert_json(service, folder_id, filename, data):
@@ -307,15 +324,16 @@ def process_one(service, category, source_parent, folder, publish_index, dry_run
     shutil.rmtree(job_dir, ignore_errors=True)
     shutil.rmtree(out_dir, ignore_errors=True)
 
-    # If YouTube already has this job, the private uploader will finish/move it.
-    if find_child_by_name(service, folder["id"], "youtube_result.json"):
-        print(f"SKIP already uploaded: {folder['name']}", flush=True)
-        return {"status": "uploaded"}
+    uploaded_video_id = _extract_uploaded_video_id(folder["name"])
+    if uploaded_video_id:
+        move_folder(service, folder["id"], source_parent, required_env("SCHEDULED_DONE_FOLDER_ID"))
+        print(f"RECOVER move only: {folder['name']} video_id={uploaded_video_id}", flush=True)
+        return {"status": "done", "video_id": uploaded_video_id}
 
-    # Idempotency: a successful public render is stored back in the private Drive folder.
-    if find_child_by_name(service, folder["id"], "public_rendered.mp4"):
-        print(f"SKIP already rendered: {folder['name']}", flush=True)
-        return {"status": "rendered"}
+    if find_child_by_name(service, folder["id"], "youtube_result.json"):
+        move_folder(service, folder["id"], source_parent, required_env("SCHEDULED_DONE_FOLDER_ID"))
+        print(f"RECOVER legacy upload marker: {folder['name']}", flush=True)
+        return {"status": "done"}
 
     download_folder_recursive(service, folder["id"], job_dir)
     manifest_path = find_manifest(job_dir)
@@ -328,31 +346,35 @@ def process_one(service, category, source_parent, folder, publish_index, dry_run
     try:
         wait_until_ready()
         video = render_scheduled_job(job, job_dir, out_dir, synthesize)
-        result = {
-            "project_id": job["project_id"],
-            "category": category,
-            "rendered_at": datetime.now(JST).isoformat(),
-            "filename": "public_rendered.mp4",
-        }
         if dry_run:
+            result = {
+                "project_id": job["project_id"],
+                "category": category,
+                "rendered_at": datetime.now(JST).isoformat(),
+                "filename": video.name,
+            }
             print("PUBLIC_RENDER_DRY_RUN=" + json.dumps(result, ensure_ascii=False), flush=True)
             return {"status": "rendered", **result}
 
-        upload_binary(service, folder["id"], "public_rendered.mp4", video, "video/mp4")
-        upsert_json(service, folder["id"], "public_render_result.json", result)
-        print("PUBLIC_RENDER_RESULT=" + json.dumps(result, ensure_ascii=False), flush=True)
-        return {"status": "rendered", **result}
-    except Exception as exc:
-        state = read_json(job_dir / "worker_state.json", {"retry_count": 0})
-        retries = int(state.get("retry_count", 0)) + 1
-        error_state = {
-            "retry_count": retries,
-            "last_error": f"{type(exc).__name__}: {exc}",
-            "updated_at": datetime.now(JST).isoformat(),
-        }
-        if not dry_run:
-            upsert_json(service, folder["id"], "worker_state.json", error_state)
-        raise
+        required_env("YOUTUBE_CLIENT_ID")
+        required_env("YOUTUBE_CLIENT_SECRET")
+        required_env("YOUTUBE_REFRESH_TOKEN")
+        result = upload_video(video, job)
+        result.update({
+            "project_id": job["project_id"],
+            "category": category,
+            "uploaded_at": datetime.now(JST).isoformat(),
+        })
+
+        # Persist idempotency without creating a new Drive file. Renaming an
+        # existing shared folder consumes no service-account storage quota.
+        marker_name = f"{folder['name']}__YT_{result['video_id']}"
+        rename_folder(service, folder["id"], marker_name)
+
+        # Only after the upload is durably marked do we move the source folder.
+        move_folder(service, folder["id"], source_parent, required_env("SCHEDULED_DONE_FOLDER_ID"))
+        print("PUBLIC_UPLOAD_RESULT=" + json.dumps(result, ensure_ascii=False), flush=True)
+        return {"status": "done", **result}
     finally:
         if old_speed is None:
             os.environ.pop("VOICEVOX_SPEED", None)
@@ -390,7 +412,7 @@ def main():
                 print(traceback.format_exc(limit=8), flush=True)
 
     summary = {"processed": processed, "failures": failures, "dry_run": dry_run, "limits": limits}
-    print("PUBLIC_RENDER_SUMMARY=" + json.dumps(summary, ensure_ascii=False), flush=True)
+    print("PUBLIC_PRODUCTION_SUMMARY=" + json.dumps(summary, ensure_ascii=False), flush=True)
     if failures and processed == 0:
         raise SystemExit(1)
 
