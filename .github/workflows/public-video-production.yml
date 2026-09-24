@@ -112,7 +112,7 @@ jobs:
           MBTI_PUBLISH_SLOTS: "08:00,15:30,21:00"
           CAT_PUBLISH_SLOTS: "10:30,17:00,22:00"
           LONG_PUBLISH_SLOTS: "20:30"
-          SHORTS_VOICE_SPEED: "1.50"
+          SHORTS_VOICE_SPEED: "1.65"
           LONG_VOICE_SPEED: "1.25"
           VOICEVOX_SPEAKER_NAME: "ずんだもん"
           VOICEVOX_STYLE_NAME: "ノーマル"
