@@ -319,9 +319,19 @@ def normalize_job(manifest, category, folder_name, job_dir, publish_index):
 
 def voice_speed(job):
     voice = job.get("voice") or {}
+    if job.get("category") == "long":
+        if voice.get("speed") is not None:
+            return str(voice["speed"])
+        return os.getenv("LONG_VOICE_SPEED", "1.25")
+
+    # Keep Shorts brisk even when older manifests still contain speed=1.50.
+    target = float(os.getenv("SHORTS_VOICE_SPEED", "1.65"))
     if voice.get("speed") is not None:
-        return str(voice["speed"])
-    return os.getenv("LONG_VOICE_SPEED", "1.25") if job.get("category") == "long" else os.getenv("SHORTS_VOICE_SPEED", "1.50")
+        try:
+            target = max(target, float(voice["speed"]))
+        except (TypeError, ValueError):
+            pass
+    return str(target)
 
 
 def category_limits():
