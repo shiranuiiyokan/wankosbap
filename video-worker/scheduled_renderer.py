@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -34,11 +35,23 @@ def _load_reading_map():
 READING_MAP = _load_reading_map()
 
 
+def _normalize_tts_text(text: str) -> str:
+    # Japanese narration is often authored with visual word-separating spaces.
+    # VOICEVOX treats those spaces and middle dots as pauses, so remove them
+    # around Japanese text while preserving spaces inside ordinary ASCII phrases.
+    text = text.replace("・", "")
+    jp = r"\\u3040-\\u30ff\\u3400-\\u9fff々〆ヵヶー"
+    text = re.sub(rf"(?<=[{jp}])\\s+", "", text)
+    text = re.sub(rf"\\s+(?=[{jp}、。！？])", "", text)
+    text = re.sub(r"[ \\t]+([、。！？])", r"\\1", text)
+    return text.strip()
+
+
 def _speech_text(scene: dict) -> str:
     text = str(scene.get("narration_reading") or scene.get("narration") or "").strip()
     for source in sorted(READING_MAP, key=len, reverse=True):
         text = text.replace(source, str(READING_MAP[source]))
-    return text
+    return _normalize_tts_text(text)
 
 
 def audio_duration(path: Path) -> float:
