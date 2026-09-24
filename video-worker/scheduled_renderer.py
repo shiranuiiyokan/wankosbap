@@ -3,6 +3,7 @@ import os
 import subprocess
 from pathlib import Path
 
+from PIL import Image, ImageOps
 from renderer import render_cta
 
 FPS = 30
@@ -12,7 +13,11 @@ READING_MAP_PATH = Path(__file__).parent / "voice_reading_map.json"
 
 def run(cmd):
     print("+", " ".join(str(x) for x in cmd), flush=True)
-    subprocess.run(cmd, check=True)
+    timeout = max(30, int(os.getenv("FFMPEG_TIMEOUT_SECONDS", "300")))
+    try:
+        subprocess.run(cmd, check=True, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"ffmpeg timed out after {timeout}s") from exc
 
 
 def _load_reading_map():
@@ -148,6 +153,22 @@ def concatenate(files, output: Path):
     return output
 
 
+
+
+def _sanitize_image(path: Path, output_dir: Path, index: int) -> Path:
+    """Decode with Pillow and re-save a clean RGB JPEG before FFmpeg.
+
+    This strips malformed/oversized PNG metadata/chunks that can make FFmpeg's
+    image parser loop indefinitely on otherwise viewable generated images.
+    """
+    target = output_dir / f"sanitized_{index:02d}.jpg"
+    with Image.open(path) as source:
+        source.load()
+        clean = ImageOps.exif_transpose(source).convert("RGB")
+        clean.save(target, "JPEG", quality=95, subsampling=0)
+    return target
+
+
 def render_scheduled_job(job: dict, job_dir: Path, output_dir: Path, synthesize_fn):
     output_dir.mkdir(parents=True, exist_ok=True)
     width, height = _dimensions(job)
@@ -155,7 +176,7 @@ def render_scheduled_job(job: dict, job_dir: Path, output_dir: Path, synthesize_
     rendered = []
 
     for i, scene in enumerate(job["scenes"], start=1):
-        image = job_dir / scene["image"]
+        image = _sanitize_image(job_dir / scene["image"], output_dir, i)
         clip = output_dir / f"scene_{i:02d}.mp4"
         narration = scene.get("narration")
         speech_text = _speech_text(scene)
