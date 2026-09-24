@@ -3,12 +3,13 @@ import os
 import subprocess
 from pathlib import Path
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageFile, ImageOps
 from renderer import render_cta
 
 FPS = 30
 SCENE_TAIL = float(os.getenv("SCENE_TAIL", "0.55"))
 READING_MAP_PATH = Path(__file__).parent / "voice_reading_map.json"
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 def run(cmd):
