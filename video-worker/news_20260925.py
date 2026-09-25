@@ -1,82 +1,60 @@
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont
-from datetime import datetime, timedelta, timezone
-import os, textwrap
+from PIL import Image,ImageDraw,ImageFont,ImageOps,ImageFilter
+from datetime import timedelta,timezone
+import os,urllib.request
 from scheduled_renderer import render_scheduled_job
-from voicevox import synthesize, wait_until_ready
+from voicevox import synthesize,wait_until_ready
 from youtube_upload import upload_video
 
-ROOT=Path(__file__).parent
-ASSET=ROOT/"news_20260925_assets"
-OUT=ROOT/"news_20260925_output"
-W,H=1920,1080
-JST=timezone(timedelta(hours=9))
-
-def font(size,bold=False):
-    cands=[
-      "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc" if bold else "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-      "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
-    ]
-    for p in cands:
-        if Path(p).exists(): return ImageFont.truetype(p,size)
-    return ImageFont.load_default()
-
-def wrap_jp(s,n):
-    return "\n".join(s[i:i+n] for i in range(0,len(s),n))
-
-def card(i,kicker,title,sub,tag):
-    img=Image.new("RGB",(W,H),(246,247,249)); d=ImageDraw.Draw(img)
-    d.rectangle((0,0,W,105),fill=(20,27,38))
-    d.text((90,28),"WANKO NEWS  |  2026.09.25",font=font(42,True),fill="white")
-    d.rounded_rectangle((90,165,590,245),24,fill=(230,235,241))
-    d.text((120,183),kicker,font=font(34,True),fill=(40,48,62))
-    d.text((90,310),wrap_jp(title,18),font=font(72,True),fill=(18,23,31),spacing=16)
-    d.text((95,650),wrap_jp(sub,31),font=font(38),fill=(75,84,98),spacing=14)
-    d.rounded_rectangle((90,910,520,990),22,fill=(20,27,38))
-    d.text((120,928),tag,font=font(32,True),fill="white")
-    # editorial side panel
-    d.rounded_rectangle((1430,165,1815,990),34,fill=(229,233,239))
-    d.ellipse((1510,260,1735,485),fill=(255,255,255))
-    d.text((1580,305),"PET",font=font(48,True),fill=(20,27,38))
-    d.text((1530,535),f"0{i}",font=font(110,True),fill=(20,27,38))
-    d.text((1515,735),"NEWS\nBRIEF",font=font(42,True),fill=(70,80,95),spacing=8)
-    p=ASSET/f"scene{i:02d}.png"; img.save(p); return p.name
-
+ROOT=Path(__file__).parent; ASSET=ROOT/"news_20260925_tv_assets"; OUT=ROOT/"news_20260925_tv_output"
 ASSET.mkdir(exist_ok=True); OUT.mkdir(exist_ok=True)
-scenes=[]
-items=[
-("TODAY","今日のペットニュース","国内を最優先。海外は重要な制度・業界ニュースだけを短く整理します。","4 TOPICS",
-"9月25日のペットニュースです。今日は、動物愛護週間の国内動向、災害時の動物支援、イギリスの犬の飼育ルールをめぐる新しい報告、そして台湾のペット登録促進策をまとめます。"),
-("国内","動物愛護週間、9月26日まで","長崎県や山口県などで、適正飼養・譲渡・しつけ・ボランティア体験などの啓発企画。","現行・実施中",
-"まず国内です。9月20日から26日は動物愛護週間。長崎県では24日にイベント情報を更新し、山口県でも26日まで動物愛護キャンペーンを実施しています。かわいいだけでなく、終生飼養や適正な飼い方を考える一週間です。"),
-("国内","災害時の動物支援が表彰","第10回 川島なお美動物愛護賞。大賞は災害派遣獣医療チーム「福岡VMAT」。","9月24日発表",
-"続いて、災害とペットです。9月24日に第10回川島なお美動物愛護賞の授賞式が報告され、大賞には福岡VMATが選ばれました。VMATは大規模災害時などに、被災動物の救護や獣医療支援を行うチームです。ペット防災は、飼い主の備えだけでなく、被災後の獣医療体制も重要です。"),
-("海外・英国","犬の飼い主責任をめぐる新報告","Defra委託の独立タスクフォース報告。対象はイングランドとウェールズ。","提言段階",
-"海外で最も重要なのはイギリスです。24日、政府の環境・食料・農村地域省が、責任ある犬の飼育と犬による攻撃を減らすための独立報告書を公表しました。教育、犬と飼い主のトレーニング、既存法の執行、事故データの改善などが柱です。ここは注意が必要で、新しい法律が施行されたというニュースではありません。現時点では政策提言です。"),
-("海外・台湾","ペット登録を促す施策で登録増","台湾の動物福祉当局によると、抽選型バウチャー施策で犬猫登録が1万8500件増加。","9月24日説明",
-"台湾では、ペット登録を促すバウチャー抽選施策によって、犬と猫の登録が全国で1万8500件増えたと当局者が説明しました。制度を作るだけでなく、飼い主が実際に登録するきっかけをどう作るかという点で、日本のマイクロチップや登録制度を考える材料にもなります。"),
-("まとめ","今日のポイント","愛護啓発／災害時の獣医療／犬の飼い主責任／ペット登録促進","出典は概要欄",
-"今日のポイントは、動物愛護を啓発するだけでなく、災害時の支援、飼い主の責任、個体登録まで、ペットを取り巻く仕組みが広がっていること。ニュースは制度の決定と検討段階を分けて、今後も一次情報を中心に追っていきます。")
-]
-for i,(k,t,s,tag,n) in enumerate(items,1):
-    scenes.append({"image":card(i,k,t,s,tag),"narration":n})
+W,H=1920,1080
+def ft(n,b=False):
+ p="/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc" if b else "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+ return ImageFont.truetype(p,n)
+def wrap(s,n): return "\n".join(s[i:i+n] for i in range(0,len(s),n))
+def dl(name,url):
+ p=ASSET/name
+ if not p.exists():
+  try:
+   req=urllib.request.Request(url,headers={"User-Agent":"WankoNews/1.0"}); p.write_bytes(urllib.request.urlopen(req,timeout=30).read())
+  except Exception as e: print("IMAGE_DOWNLOAD_WARNING",name,e)
+ return p
+def photo_bg(path):
+ try:
+  im=Image.open(path).convert("RGB"); return ImageOps.fit(im,(W,H),method=Image.Resampling.LANCZOS)
+ except: return Image.new("RGB",(W,H),(220,225,230))
+def lower(img,kicker,headline,source=""):
+ d=ImageDraw.Draw(img,"RGBA"); d.rectangle((0,0,W,82),fill=(13,20,31,235)); d.text((65,18),"WANKO NEWS  2026.09.25",font=ft(34,1),fill="white")
+ d.rounded_rectangle((55,730,1865,1020),28,fill=(8,13,22,220)); d.rounded_rectangle((85,760,355,825),18,fill=(220,45,55,245))
+ d.text((115,773),kicker,font=ft(30,1),fill="white"); d.text((90,850),wrap(headline,24),font=ft(54,1),fill="white",spacing=8)
+ if source:d.text((90,985),source,font=ft(22),fill=(220,225,232))
+ return img
+def save(i,img): p=ASSET/f"scene{i:02d}.png"; img.save(p,quality=95); return p.name
+def diagram(i,title,cols,footer=""):
+ im=Image.new("RGB",(W,H),(244,246,249)); d=ImageDraw.Draw(im); d.rectangle((0,0,W,90),fill=(15,23,36)); d.text((65,20),"WANKO NEWS  |  KEY POINT",font=ft(36,1),fill="white")
+ d.text((90,150),title,font=ft(64,1),fill=(18,25,38))
+ n=len(cols); gap=35; cw=(W-180-gap*(n-1))//n
+ for j,(h,b) in enumerate(cols):
+  x=90+j*(cw+gap); d.rounded_rectangle((x,300,x+cw,850),30,fill="white",outline=(205,211,220),width=3)
+  d.text((x+35,350),h,font=ft(40,1),fill=(30,48,75)); d.text((x+35,450),wrap(b,13),font=ft(34),fill=(55,65,80),spacing=16)
+ if footer:d.text((90,930),footer,font=ft(30,1),fill=(90,45,45))
+ return save(i,im)
 
-job={
- "job_id":"NEWS-20260925","project_id":"NEWS-20260925","series":"news","category":"long",
- "title":"今日のペットニュース｜2026年9月25日",
- "youtube":{
-   "title":"今日のペットニュース｜英国で犬の飼育ルール提言・災害時の動物支援ほか【2026年9月25日】",
-   "description":"2026年9月25日時点のペット関連ニュースを国内優先でまとめました。\n\n主な出典：\n・長崎県 動物愛護週間イベント（2026/9/24更新）\n・山口県 動物愛護キャンペーン\n・エンジン01文化戦略会議 第10回 川島なお美動物愛護賞（2026/9/24）\n・UK Defra Responsible Dog Ownership report（2026/9/24）\n・Taipei Times / Taiwan Animal Welfare Department（2026/9/25報道）\n\n※英国の内容は2026年9月25日時点で政策提言段階であり、新法施行を意味しません。\n※ニュースは確認時点の情報です。",
-   "tags":["ペットニュース","犬","猫","動物愛護","ペット防災","犬の法律","WANKO SNAP"],
-   "category_id":"15","made_for_kids":False,"contains_synthetic_media":True,
-   "schedule_publish":False,"publish_immediately":False
- },
- "video":{"width":1920,"height":1080},
- "voice":{"speed":1.28},
- "scenes":scenes,"narration_enabled":True,"append_common_cta":False
-}
-os.environ["VOICEVOX_SPEED"]="1.28"
-wait_until_ready()
-video=render_scheduled_job(job,ASSET,OUT,synthesize)
-res=upload_video(video,job)
-print("NEWS_UPLOAD_RESULT="+str(res),flush=True)
+shiba=dl("shiba.jpg","https://commons.wikimedia.org/wiki/Special:Redirect/file/Shiba-inu%20in%20Japan.jpg")
+senior=dl("senior_shiba.jpg","https://commons.wikimedia.org/wiki/Special:Redirect/file/Shiba%20Inu%2015%20year%20old.jpg")
+cat=dl("cat.jpg","https://commons.wikimedia.org/wiki/Special:Redirect/file/Cat03.jpg")
+sc=[]
+def addphoto(i,p,k,h,s,n): sc.append({"image":save(i,lower(photo_bg(p),k,h,s)),"narration":n})
+addphoto(1,shiba,"TODAY","犬猫を取り巻く“仕組み”に注目","映像：Wikimedia Commons / 解説用イメージ","9月25日のペットニュースです。今日は国内の動物愛護週間と長寿犬猫、そして海外ではイギリスの犬の飼育責任をめぐる新しい報告を中心に見ていきます。")
+addphoto(2,cat,"国内","9月26日まで「動物愛護週間」","環境省の制度に基づく啓発週間","まず国内です。9月20日から26日は動物愛護週間です。全国で、終生飼養や適正な飼い方、動物との関わりを考える啓発が行われています。")
+sc.append({"image":diagram(3,"動物愛護週間｜見るポイント",[("迎える前","最後まで飼えるか\n生活環境を確認"),("暮らし","健康管理\n迷子・災害への備え"),("地域","マナーとルール\n適正飼養を共有")],"期間：9月20日〜26日"),"narration":"ポイントは、かわいいという気持ちだけでなく、迎える前から最後まで責任を持つこと。健康管理や迷子対策、災害への備えも、適正飼養の一部です。"})
+addphoto(4,senior,"国内","三重県で長寿犬・長寿猫を表彰","9月23日実施／報道ベース","三重県では23日、長生きした犬と猫をたたえる表彰が行われました。報道では、最高齢は犬が19歳、猫が25歳でした。個体差が大きいため、この年齢を犬猫全体の平均寿命として見るものではありません。")
+sc.append({"image":diagram(5,"長寿ニュース｜数字の見方",[("今回の表彰","犬 19歳\n猫 25歳"),("注意","最高齢の事例\n平均寿命ではない"),("飼い主目線","定期健診\n食事・体重管理")],"数字は個別事例として扱います"),"narration":"長寿のニュースで大切なのは、最高齢の数字だけを一般化しないことです。日々の食事や体重管理、定期的な健康チェックなど、年齢に合わせたケアを考えるきっかけになります。"})
+addphoto(6,shiba,"海外・英国","犬の飼育責任をめぐり20の提言","UK Defra 2026年9月24日公表／イングランド・ウェールズ中心","海外ではイギリスです。24日、政府の環境・食料・農村地域省が、責任ある犬の飼育について独立タスクフォースの報告書を公表しました。報告書には20の提言が盛り込まれています。")
+sc.append({"image":diagram(7,"英国報告｜主な論点",[("飼い主","教育・トレーニング\n責任ある飼育"),("専門職","トレーナー等の\n規制方法を検討"),("行政","事故データ\n法執行の改善")],"重要：現時点では「提言」。新法が施行されたわけではありません。"),"narration":"内容には、飼い主への教育やトレーニング、事故データの改善、既存法の執行に加え、ドッグトレーナーや行動専門家をどう規制するかという論点も含まれます。ただし、現時点では提言で、新しい法律が施行されたわけではありません。"})
+addphoto(8,shiba,"CHECK","“決まったこと”と“検討中”を分ける","英国の内容は政策提言段階","ペット関連の制度ニュースでは、発表された提言と、成立した法律、実際に施行されたルールを分けて見る必要があります。今回のイギリスの報告は、今後の政府対応を追う段階です。")
+sc.append({"image":diagram(9,"今日の3ポイント",[("国内","動物愛護週間\n9月26日まで"),("犬猫","長寿表彰を\nケアのきっかけに"),("海外","英国で犬の\n飼育責任を提言")],"一次情報と制度の現在地を区別して確認"),"narration":"今日の3ポイントです。国内では動物愛護週間。長寿犬猫のニュースは日々のケアを考えるきっかけに。そしてイギリスでは犬の飼育責任について新しい提言が公表されました。"})
+addphoto(10,cat,"WANKO NEWS","ペットのニュースを、暮らしにつながる形で","2026年9月25日時点","今後も、犬や猫との暮らしに関係する制度、災害、業界の動きを、決定事項と検討段階を分けながら整理していきます。")
+job={"job_id":"NEWS-TV-20260925-V2","project_id":"NEWS-TV-20260925-V2","series":"news","category":"long","title":"今日のペットニュース 2026年9月25日 TV版","youtube":{"title":"今日のペットニュース｜英国で犬の飼育責任20提言・動物愛護週間・長寿犬猫【2026年9月25日】","description":"2026年9月25日時点のペット関連ニュースを国内優先で整理した改訂TVニュース版です。\n\n主な確認先：環境省（動物愛護週間）、三重テレビ（長寿犬猫表彰）、UK Defra Responsible Dog Ownership report（2026/9/24）。\n\n※英国の内容は政策提言段階で、新法施行を意味しません。\n※一部の犬猫映像はニュース内容を説明するイメージ映像です。","tags":["ペットニュース","犬","猫","動物愛護週間","ペット","犬の法律"],"category_id":"15","made_for_kids":False,"contains_synthetic_media":True,"schedule_publish":False,"publish_immediately":False},"video":{"width":1920,"height":1080},"voice":{"speed":1.28},"scenes":sc,"narration_enabled":True,"append_common_cta":False}
+os.environ["VOICEVOX_SPEED"]="1.28"; wait_until_ready(); video=render_scheduled_job(job,ASSET,OUT,synthesize); res=upload_video(video,job); print("NEWS_UPLOAD_RESULT="+str(res),flush=True)
