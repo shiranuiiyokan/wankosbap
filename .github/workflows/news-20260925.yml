@@ -1,0 +1,47 @@
+name: Pet news 2026-09-25
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "video-worker/news_20260925.py"
+      - ".github/workflows/news-20260925.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  render-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: video-worker/requirements.txt
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-cjk
+          pip install -r video-worker/requirements.txt
+      - name: Start VOICEVOX
+        run: |
+          docker pull voicevox/voicevox_engine:cpu-latest
+          docker run -d --name voicevox -p 127.0.0.1:50021:50021 voicevox/voicevox_engine:cpu-latest
+          for i in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:50021/version >/dev/null && exit 0
+            sleep 2
+          done
+          exit 1
+      - name: Render and upload private news video
+        working-directory: video-worker
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          VOICEVOX_SPEAKER_NAME: "ずんだもん"
+          VOICEVOX_STYLE_NAME: "ノーマル"
+        run: python news_20260925.py
