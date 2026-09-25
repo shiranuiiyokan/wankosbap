@@ -35,6 +35,11 @@ MANIFEST_NAMES = ("manifest.json", "job.json", "metadata.json")
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
+class InvalidAssetError(RuntimeError):
+    """Permanent scheduled-asset structure error; quarantine instead of retrying forever."""
+
+
+
 def read_json(path: Path, default=None):
     default = {} if default is None else default
     if not path.is_file():
@@ -363,7 +368,7 @@ def process_one(service, category, source_parent, folder, publish_index, dry_run
     download_folder_recursive(service, folder["id"], job_dir)
     manifest_path = find_manifest(job_dir)
     if not manifest_path:
-        raise ValueError("manifest.json/job.json/metadata.json is missing")
+        raise InvalidAssetError("manifest.json/job.json/metadata.json is missing")
 
     job = normalize_job(read_json(manifest_path, {}), category, folder["name"], job_dir, publish_index)
     old_speed = os.environ.get("VOICEVOX_SPEED")
@@ -423,14 +428,47 @@ def main():
         source = folders.get(category)
         if not source:
             continue
-        available = list_child_folders(service, source, limit=max(20, limits[category] * 5))
-        selected = available[:limits[category]]
-        print(f"CATEGORY={category} available={len(available)} selected={len(selected)}", flush=True)
-        for index, folder in enumerate(selected):
+
+        # Scan beyond the nominal limit so one malformed/stale folder cannot
+        # consume a daily publish slot forever. Only successful jobs advance
+        # publish_index, so later jobs fill the skipped slot (e.g. 17:00).
+        available = list_child_folders(service, source, limit=max(50, limits[category] * 10))
+        category_processed = 0
+        print(
+            f"CATEGORY={category} available={len(available)} target={limits[category]}",
+            flush=True,
+        )
+
+        for folder in available:
+            if category_processed >= limits[category]:
+                break
             try:
-                result = process_one(service, category, source, folder, index, dry_run=dry_run)
+                result = process_one(
+                    service,
+                    category,
+                    source,
+                    folder,
+                    category_processed,
+                    dry_run=dry_run,
+                )
                 if result.get("status") in {"done", "rendered"}:
                     processed += 1
+                    category_processed += 1
+            except InvalidAssetError as exc:
+                failures += 1
+                print(
+                    f"QUARANTINE {category}/{folder['name']}: "
+                    f"{type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+                print(traceback.format_exc(limit=8), flush=True)
+                if not dry_run:
+                    move_folder(
+                        service,
+                        folder["id"],
+                        source,
+                        required_env("SCHEDULED_ERROR_FOLDER_ID"),
+                    )
             except Exception as exc:
                 failures += 1
                 print(f"ERROR {category}/{folder['name']}: {type(exc).__name__}: {exc}", flush=True)
