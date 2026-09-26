@@ -9,7 +9,7 @@ from pathlib import Path
 from googleapiclient.http import MediaIoBaseUpload
 
 from drive_client import build_drive_service, download_file
-from scheduled_renderer import render_scheduled_job
+from scheduled_renderer import render_scheduled_job, audio_duration
 from voicevox import synthesize, wait_until_ready
 from youtube_upload import upload_video
 
@@ -376,12 +376,21 @@ def process_one(service, category, source_parent, folder, publish_index, dry_run
     try:
         wait_until_ready()
         video = render_scheduled_job(job, job_dir, out_dir, synthesize)
+        rendered_duration = audio_duration(video)
+        if category == "long":
+            min_long_seconds = max(60, int(os.getenv("MIN_LONG_SECONDS", "480")))
+            if rendered_duration < min_long_seconds:
+                raise RuntimeError(
+                    f"long quality gate failed: rendered_duration={rendered_duration:.1f}s "
+                    f"< minimum={min_long_seconds}s project_id={job['project_id']}"
+                )
         if dry_run:
             result = {
                 "project_id": job["project_id"],
                 "category": category,
                 "rendered_at": datetime.now(JST).isoformat(),
                 "filename": video.name,
+                "rendered_duration_seconds": round(rendered_duration, 1),
             }
             print("PUBLIC_RENDER_DRY_RUN=" + json.dumps(result, ensure_ascii=False), flush=True)
             return {"status": "rendered", **result}
