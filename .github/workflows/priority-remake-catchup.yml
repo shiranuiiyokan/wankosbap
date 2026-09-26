@@ -1,0 +1,91 @@
+name: Priority remake catch-up
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/priority-remake-catchup.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  catchup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify required secrets
+        env:
+          DRIVE_OK: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          YT_ID_OK: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YT_SECRET_OK: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YT_REFRESH_OK: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+        shell: bash
+        run: |
+          test -n "$DRIVE_OK"
+          test -n "$YT_ID_OK"
+          test -n "$YT_SECRET_OK"
+          test -n "$YT_REFRESH_OK"
+
+      - name: Install renderer dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-cjk
+          pip install -r video-worker/requirements.txt
+
+      - name: Start VOICEVOX
+        run: |
+          docker pull voicevox/voicevox_engine:cpu-latest
+          docker run -d --name voicevox -p 127.0.0.1:50021:50021 voicevox/voicevox_engine:cpu-latest
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:50021/version >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          docker logs voicevox
+          exit 1
+
+      - name: Poll Drive and publish priority remakes
+        working-directory: video-worker
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          SCHEDULED_DOG_FOLDER_ID: "1tS_bBKMPmmqXq-ROYi9PvgYI2wit9FgZ"
+          SCHEDULED_MBTI_FOLDER_ID: "16tZkJMMCYbMiugO5pWfEeyvA5fGHXvR0"
+          SCHEDULED_CAT_FOLDER_ID: "1F2Dp0uhLNKbLcxDUatOz0QhJDnsabR8o"
+          SCHEDULED_LONG_FOLDER_ID: "1cmYcKgmQhj-LesauZ92BCS4-mC44fUBP"
+          SCHEDULED_DONE_FOLDER_ID: "12F-_M0xRuCnjqs6xQ-plTYWOa3LAsBIV"
+          SCHEDULED_ERROR_FOLDER_ID: "12mzxgiCEsZdBQxvz-Uso-0Ozzrqol_HI"
+          DRY_RUN: "false"
+          MAX_ATTEMPTS: "3"
+          DOG_JOB_LIMIT: "1"
+          MBTI_JOB_LIMIT: "0"
+          CAT_JOB_LIMIT: "0"
+          LONG_JOB_LIMIT: "3"
+          PROJECT_ID_ALLOWLIST: "DOG-WOLFDOG-001,LONG-COMP-002-R2,LONG-JAPAN-DOGS-R2,MBTI-LONG-002-R2"
+          SKIP_INCOMPLETE: "true"
+          PUBLISH_IMMEDIATELY: "true"
+          MIN_LONG_SECONDS: "900"
+          SHORTS_VOICE_SPEED: "1.65"
+          LONG_VOICE_SPEED: "1.25"
+          VOICEVOX_SPEAKER_NAME: "ずんだもん"
+          VOICEVOX_STYLE_NAME: "ノーマル"
+          CTA_ENABLED: "true"
+          CTA_DURATION: "1.2"
+          CTA_TEXT: "ペットとツーショット撮るなら、WANKO SNAP。"
+          CTA_SUBTEXT: "プロフィールから"
+          FFMPEG_TIMEOUT_SECONDS: "300"
+        shell: bash
+        run: |
+          set -u
+          for i in $(seq 1 24); do
+            echo "=== priority catch-up poll $i/24 ==="
+            python public_worker.py || true
+            sleep 600
+          done
