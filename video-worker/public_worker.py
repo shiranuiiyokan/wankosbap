@@ -371,6 +371,9 @@ def process_one(service, category, source_parent, folder, publish_index, dry_run
     download_folder_recursive(service, folder["id"], job_dir)
     manifest_path = find_manifest(job_dir)
     if not manifest_path:
+        if os.getenv("SKIP_INCOMPLETE", "false").lower() in {"1", "true", "yes"}:
+            print(f"WAIT incomplete asset: {category}/{folder['name']} manifest missing", flush=True)
+            return {"status": "waiting"}
         raise InvalidAssetError("manifest.json/job.json/metadata.json is missing")
 
     job = normalize_job(read_json(manifest_path, {}), category, folder["name"], job_dir, publish_index)
