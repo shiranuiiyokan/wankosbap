@@ -287,6 +287,9 @@ def normalize_job(manifest, category, folder_name, job_dir, publish_index):
         normalized.append(item)
 
     youtube = dict(manifest.get("youtube") or {})
+    if os.getenv("PUBLISH_IMMEDIATELY", "false").lower() in {"1", "true", "yes"}:
+        youtube["publish_immediately"] = True
+        youtube["schedule_publish"] = False
     youtube.setdefault("title", title)
     youtube.setdefault("description", description)
     youtube.setdefault("tags", manifest.get("tags", []))
@@ -378,7 +381,7 @@ def process_one(service, category, source_parent, folder, publish_index, dry_run
         video = render_scheduled_job(job, job_dir, out_dir, synthesize)
         rendered_duration = audio_duration(video)
         if category == "long":
-            min_long_seconds = max(60, int(os.getenv("MIN_LONG_SECONDS", "480")))
+            min_long_seconds = max(60, int(os.getenv("MIN_LONG_SECONDS", "900")))
             if rendered_duration < min_long_seconds:
                 raise RuntimeError(
                     f"long quality gate failed: rendered_duration={rendered_duration:.1f}s "
@@ -442,6 +445,13 @@ def main():
         # consume a daily publish slot forever. Only successful jobs advance
         # publish_index, so later jobs fill the skipped slot (e.g. 17:00).
         available = list_child_folders(service, source, limit=max(50, limits[category] * 10))
+        allowlist_raw = os.getenv("PROJECT_ID_ALLOWLIST", "").strip()
+        if allowlist_raw:
+            allowlist = [x.strip() for x in allowlist_raw.split(",") if x.strip()]
+            available = [
+                folder for folder in available
+                if any(project_id in folder.get("name", "") for project_id in allowlist)
+            ]
         category_processed = 0
         print(
             f"CATEGORY={category} available={len(available)} target={limits[category]}",
