@@ -7,7 +7,7 @@ on:
       - "video-worker/**"
       - ".github/workflows/public-video-production.yml"
   schedule:
-    - cron: "0 12 * * *" # 21:00 JST
+    - cron: "17 12 * * *" # 21:17 JST; avoid top-of-hour scheduler load
   workflow_dispatch:
     inputs:
       dry_run:
@@ -32,7 +32,7 @@ jobs:
         run: python -m py_compile video-worker/*.py
 
   credential-gate:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-wolfdog]'))
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     needs: validate
     runs-on: ubuntu-latest
     outputs:
@@ -100,7 +100,6 @@ jobs:
           SCHEDULED_ERROR_FOLDER_ID: "12mzxgiCEsZdBQxvz-Uso-0Ozzrqol_HI"
 
           DRY_RUN: ${{ inputs.dry_run }}
-          PROJECT_ID_ALLOWLIST: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[run-wolfdog]') && 'DOG-WOLFDOG-001' || '' }}
           MAX_ATTEMPTS: "3"
           DOG_JOB_LIMIT: "3"
           MBTI_JOB_LIMIT: "3"
