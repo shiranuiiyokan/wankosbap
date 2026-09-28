@@ -7,7 +7,9 @@ on:
       - "video-worker/**"
       - ".github/workflows/public-video-production.yml"
   schedule:
-    - cron: "17 12 * * *" # 21:17 JST; avoid top-of-hour scheduler load
+    - cron: "15 5 * * *"  # 14:15 JST; news fast lane
+    - cron: "15 10 * * *" # 19:15 JST; news fast lane
+    - cron: "17 12 * * *" # 21:17 JST; regular daily production
   workflow_dispatch:
     inputs:
       dry_run:
@@ -95,6 +97,7 @@ jobs:
           SCHEDULED_DOG_FOLDER_ID: "1tS_bBKMPmmqXq-ROYi9PvgYI2wit9FgZ"
           SCHEDULED_MBTI_FOLDER_ID: "16tZkJMMCYbMiugO5pWfEeyvA5fGHXvR0"
           SCHEDULED_CAT_FOLDER_ID: "1F2Dp0uhLNKbLcxDUatOz0QhJDnsabR8o"
+          SCHEDULED_NEWS_FOLDER_ID: "1hNtd1t73hQNTFChrvfZhvFkgf0CPeaNF"
           SCHEDULED_LONG_FOLDER_ID: "1cmYcKgmQhj-LesauZ92BCS4-mC44fUBP"
           SCHEDULED_DONE_FOLDER_ID: "12F-_M0xRuCnjqs6xQ-plTYWOa3LAsBIV"
           SCHEDULED_ERROR_FOLDER_ID: "12mzxgiCEsZdBQxvz-Uso-0Ozzrqol_HI"
@@ -104,14 +107,18 @@ jobs:
           DOG_JOB_LIMIT: "3"
           MBTI_JOB_LIMIT: "3"
           CAT_JOB_LIMIT: "3"
+          NEWS_JOB_LIMIT: "2"
           LONG_JOB_LIMIT: "1"
           PUBLISH_DAYS_AHEAD: "1"
           DOG_PUBLISH_SLOTS: "09:30,13:00,19:00"
           MBTI_PUBLISH_SLOTS: "08:00,15:30,21:00"
           CAT_PUBLISH_SLOTS: "10:30,17:00,22:00"
+          NEWS_PUBLISH_SLOTS: "14:30,19:30,21:30"
           LONG_PUBLISH_SLOTS: "20:30"
           SHORTS_VOICE_SPEED: "1.65"
+          NEWS_VOICE_SPEED: "1.55"
           LONG_VOICE_SPEED: "1.25"
+          CATEGORY_ALLOWLIST: ${{ (github.event.schedule == '15 5 * * *' || github.event.schedule == '15 10 * * *') && 'news' || '' }}
           VOICEVOX_SPEAKER_NAME: "ずんだもん"
           VOICEVOX_STYLE_NAME: "ノーマル"
           CTA_ENABLED: "true"
