@@ -1,62 +1,72 @@
 from pathlib import Path
 from PIL import Image,ImageDraw,ImageFont
-import os,math
+import os
 from scheduled_renderer import render_scheduled_job
 from voicevox import synthesize,wait_until_ready
 from youtube_upload import upload_video
-
-ROOT=Path(__file__).parent; ASSET=ROOT/"wolfdog_news_assets"; OUT=ROOT/"wolfdog_news_output"; ASSET.mkdir(exist_ok=True); OUT.mkdir(exist_ok=True)
-W,H=1920,1080
-NAVY=(14,31,55); BLUE=(27,95,160); RED=(207,43,49); YELLOW=(246,190,45); BG=(242,246,250); INK=(22,30,42); WHITE=(255,255,255)
+ROOT=Path(__file__).parent; ASSET=ROOT/"weekly_news_20260928_assets"; OUT=ROOT/"weekly_news_20260928_output"; ASSET.mkdir(exist_ok=True); OUT.mkdir(exist_ok=True)
+W,H=1080,1920; NAVY=(12,28,52); BLUE=(28,98,170); RED=(205,43,48); Y=(247,190,44); BG=(242,246,250); INK=(22,31,43); WHITE=(255,255,255); MUTED=(90,102,118)
 def ft(n,b=False):
  p="/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc" if b else "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"; return ImageFont.truetype(p,n)
+def txt(d,xy,s,n=54,c=INK,b=False,anchor=None): d.text(xy,s,font=ft(n,b),fill=c,anchor=anchor,spacing=12)
 def wrap(s,n): return "\n".join(s[i:i+n] for i in range(0,len(s),n))
-def base(section,title,sub=""):
- im=Image.new("RGB",(W,H),BG); d=ImageDraw.Draw(im); d.rectangle((0,0,W,92),fill=NAVY); d.text((55,19),"WANKO NEWS  |  2026.09.26",font=ft(36,1),fill=WHITE)
- d.rounded_rectangle((65,135,300,205),18,fill=RED); d.text((100,148),section,font=ft(32,1),fill=WHITE); d.text((65,245),title,font=ft(65,1),fill=INK)
- if sub:d.text((70,345),sub,font=ft(31),fill=(72,83,98))
- return im
-def wolf(d,x,y,s=1):
- # intentionally illustrated silhouette, not photorealistic
- pts=[(x,y+190*s),(x+80*s,y+105*s),(x+125*s,y+40*s),(x+155*s,y+115*s),(x+265*s,y+95*s),(x+335*s,y+135*s),(x+380*s,y+110*s),(x+350*s,y+170*s),(x+310*s,y+190*s),(x+295*s,y+290*s),(x+245*s,y+290*s),(x+235*s,y+195*s),(x+130*s,y+200*s),(x+115*s,y+290*s),(x+65*s,y+290*s),(x+70*s,y+205*s)]
- d.polygon(pts,fill=(92,103,116)); d.ellipse((x+120*s,y+105*s,x+145*s,y+130*s),fill=YELLOW)
-def card(d,box,head,body,color=BLUE):
- x1,y1,x2,y2=box; d.rounded_rectangle(box,28,fill=WHITE,outline=(205,214,224),width=3); d.rectangle((x1,y1,x2,y1+70),fill=color); d.text((x1+28,y1+14),head,font=ft(32,1),fill=WHITE); d.text((x1+30,y1+105),wrap(body,16),font=ft(35),fill=INK,spacing=15)
+def header(d,kicker,num):
+ d.rectangle((0,0,W,132),fill=NAVY); txt(d,(58,36),"WANKO NEWS  WEEKLY",42,WHITE,True); txt(d,(1015,66),num,48,Y,True,"rm")
+ d.rounded_rectangle((55,165,390,230),20,fill=RED); txt(d,(82,176),kicker,31,WHITE,True)
+def source(d,s): txt(d,(60,1790),"出典："+s,24,MUTED,False); txt(d,(60,1835),"※説明用イラスト・図解。事件の再現映像ではありません。",22,MUTED)
+def card(d,box,h,b,accent=BLUE):
+ d.rounded_rectangle(box,30,fill=WHITE,outline=(210,219,229),width=3); x1,y1,x2,y2=box; d.rectangle((x1,y1,x1+14,y2),fill=accent); txt(d,(x1+40,y1+35),h,38,accent,True); txt(d,(x1+40,y1+105),wrap(b,13),39,INK)
 def save(i,im): p=ASSET/f"scene{i:02d}.png"; im.save(p); return p.name
 sc=[]
-# 1 headline
-im=base("速報","ウルフドッグ逃走　92歳女性が重傷","北海道・奈井江町／7月8日の事故をめぐり9月24日に飼い主を逮捕")
-d=ImageDraw.Draw(im); wolf(d,180,470,1.45); card(d,(900,455,1800,900),"今回確認されたこと","体重24.4kgの成犬が逃走\n女性は全治2か月以上\n飼い主を重過失傷害容疑で逮捕",RED)
-sc.append({"image":save(1,im),"narration":"北海道奈井江町で、飼われていたウルフドッグが逃げ出し、92歳の女性に重傷を負わせた事件です。警察は9月24日、67歳の飼い主を重過失傷害の疑いで逮捕しました。"})
-# 2 timeline
-im=base("経緯","事件はどう起きた？","報道各社が警察発表をもとに報道"); d=ImageDraw.Draw(im); d.line((180,570,1740,570),fill=BLUE,width=16)
-events=[(240,"7月8日 未明","自宅から逃走"),(760,"午前4:40頃","92歳女性を襲う"),(1280,"9月24日","飼い主を逮捕")]
-for x,h,b in events:d.ellipse((x-35,535,x+35,605),fill=RED); d.text((x-95,640),h,font=ft(35,1),fill=INK); d.text((x-95,700),wrap(b,9),font=ft(34),fill=(60,70,82))
-sc.append({"image":save(2,im),"narration":"警察によると、犬は7月8日未明に自宅から逃走。同日午前4時40分ごろ、近くを歩いていた92歳の女性にかみつくなどし、けがをさせた疑いが持たれています。"})
-# 3 injury / dog
-im=base("被害","女性は全治2か月以上の重傷","犬は体重24.4キロの成犬と報じられています"); d=ImageDraw.Draw(im); wolf(d,190,470,1.3); card(d,(930,470,1770,875),"被害状況","両ひざから足首付近をかまれるなどし\n全治2か月以上と報道",RED)
-sc.append({"image":save(3,im),"narration":"犬は体重24.4キロの成犬。女性は両ひざから足首付近をかまれるなどし、全治2か月以上の重傷を負ったと報じられています。"})
-# 4 escape management diagram
-im=base("管理状況","ケージは無施錠、玄関も開いた状態","警察発表をもとにした模式図。実際の住宅・犬ではありません"); d=ImageDraw.Draw(im)
-card(d,(100,450,620,860),"室内ケージ","鍵が掛かって\nいなかった",RED); d.text((690,585),"→",font=ft(100,1),fill=RED); card(d,(870,450,1390,860),"玄関","開いた状態\nだったとされる",RED); d.text((1460,585),"→",font=ft(100,1),fill=RED); wolf(d,1600,535,.55)
-sc.append({"image":save(4,im),"narration":"警察によると、当時、室内のケージには鍵が掛かっておらず、玄関も開いた状態だったということです。警察は、こうした管理状況を詳しく調べています。"})
-# 5 prior incident
-im=base("続報","同じ犬は2025年にも逃走・咬傷事故","飼い主は前年の事故をめぐり、今年に過失傷害容疑で書類送検されていました"); d=ImageDraw.Draw(im)
-card(d,(120,470,820,880),"2025年","同じウルフドッグが逃走\n別の歩行者をかみ\n重傷を負わせたと報道",NAVY); card(d,(1100,470,1800,880),"2026年","前年の事故で書類送検\n今回の事件で\n重過失傷害容疑の逮捕",RED)
-sc.append({"image":save(5,im),"narration":"さらに、この犬は2025年にも逃げ出し、別の歩行者をかんで重傷を負わせていたと報じられています。飼い主は前年の事故について、今年、過失傷害の疑いで書類送検されていました。"})
-# 6 arrest status
-im=base("現在","逮捕は有罪確定を意味しません","現時点は捜査段階。容疑と確定した事実を分けて扱います"); d=ImageDraw.Draw(im)
-card(d,(120,470,850,880),"警察の判断","同様の事案が繰り返されたことなどから\n重大な過失があった疑いとして捜査",RED); card(d,(1070,470,1800,880),"注意点","逮捕＝有罪確定ではありません\n今後の捜査・司法判断を確認",BLUE)
-sc.append({"image":save(6,im),"narration":"警察は、同様の事案が繰り返されていることなどから重大な過失があった疑いで捜査しています。ただし、逮捕は有罪が確定したという意味ではありません。"})
-# 7 key issue
-im=base("ポイント","犬種だけで事故原因を決めつけない","今回の報道で具体的に確認されているのは、逃走防止管理と過去の事故です"); d=ImageDraw.Draw(im)
-for j,(h,b) in enumerate([("犬種","ウルフドッグという\n属性だけで断定しない"),("管理","施錠・逸走防止が\n捜査上の重要点"),("再発","前年にも同じ犬の\n逃走・咬傷事故")]):card(d,(90+j*610,470,650+j*610,890),h,b,[BLUE,YELLOW,RED][j])
-sc.append({"image":save(7,im),"narration":"このニュースを、ウルフドッグだから危険だった、と単純化するのは適切ではありません。今回具体的に確認されている重要な点は、逃走を防ぐ管理の状況と、前年にも同じ犬による事故が起きていたことです。"})
-# 8 summary
-im=base("まとめ","大型犬・特殊な犬の飼育管理を考える事件","本動画の犬・住宅・人物表現は説明用イラストで、実際の事件映像ではありません"); d=ImageDraw.Draw(im)
-for j,(h,b) in enumerate([("①","逸走防止"),("②","過去の事故後の再発防止"),("③","飼い主の法的責任")]):card(d,(110+j*600,480,650+j*600,840),h,b,BLUE)
-d.text((120,930),"出典確認：UHB / HBC / HTB ほか北海道報道　2026年9月24〜26日",font=ft(27),fill=(80,90,105))
-sc.append({"image":save(8,im),"narration":"今回の事件は、大型犬や特殊な犬を飼うときの逸走防止、事故後の再発防止、そして飼い主の責任を改めて考えるニュースです。今後、新しい捜査結果や行政対応が公表された場合は続報として確認します。"})
+# 1 cover
+im=Image.new("RGB",(W,H),NAVY); d=ImageDraw.Draw(im); txt(d,(60,90),"9/22 → 9/28",40,Y,True); txt(d,(60,190),"今週の",88,WHITE,True); txt(d,(60,300),"ペットニュース",92,WHITE,True); txt(d,(60,440),"5 TOPICS",50,(173,201,231),True)
+topics=[("01","ウルフドッグ事件",RED),("02","熊本・ペット防災",BLUE),("03","飼い主の高齢化",Y),("04","イオンペット",BLUE),("05","世界狂犬病デー",RED)]
+for j,(n,t,c) in enumerate(topics): y=610+j*190; d.rounded_rectangle((65,y,1015,y+145),28,fill=(25,46,75)); d.ellipse((95,y+34,170,y+109),fill=c); txt(d,(132,y+72),n,28,WHITE,True,"mm"); txt(d,(215,y+42),t,45,WHITE,True)
+txt(d,(60,1630),"事件・防災・動物福祉・小売・感染症",30,(185,199,217)); txt(d,(60,1710),"2026.09.28",34,Y,True)
+sc.append({"image":save(1,im),"narration":"9月22日から28日まで。今週のペットニュースを、事件、防災、動物福祉、ペット小売、感染症の5テーマでまとめます。"})
+# 2 wolfdog timeline
+im=Image.new("RGB",(W,H),BG); d=ImageDraw.Draw(im); header(d,"国内・事件","01"); txt(d,(58,275),"ウルフドッグ逃走",70,INK,True); txt(d,(58,365),"92歳女性が重傷",66,RED,True)
+d.line((155,600,155,1370),fill=(177,190,204),width=10)
+for y,date,body,col in [(620,"2025","同じ犬が逃走\n歩行者にけが",BLUE),(930,"7/8","自宅から逃走\n92歳女性が重傷",RED),(1240,"9/24","67歳の飼い主を\n重過失傷害容疑で逮捕",RED)]:
+ d.ellipse((120,y-25,190,y+45),fill=col); txt(d,(240,y-15),date,40,col,True); txt(d,(240,y+55),body,42,INK,True)
+card(d,(610,565,1005,1040),"24.4kg","成犬と報道",RED); card(d,(610,1090,1005,1510),"管理状況","ケージ無施錠\n玄関も開いた状態",BLUE); source(d,"HBC 9/25")
+sc.append({"image":save(2,im),"narration":"北海道奈井江町では、体重24.4キロのウルフドッグが逃走し、92歳の女性が全治2か月以上の重傷。9月24日、飼い主が重過失傷害の疑いで逮捕されました。同じ犬は2025年にも逃走事故を起こしていました。"})
+# 3 disaster flow
+im=Image.new("RGB",(W,H),BG); d=ImageDraw.Draw(im); header(d,"国内・防災","02"); txt(d,(58,275),"避難した“その後”を",64,INK,True); txt(d,(58,365),"誰が支える？",76,BLUE,True)
+nodes=[(90,610,330,820,"被災","飼い主＋\n犬・猫"),(420,610,660,820,"受付","ペット\n救護本部"),(750,610,990,820,"支援","一時預かり\n健康相談")]
+for x1,y1,x2,y2,h,b in nodes: card(d,(x1,y1,x2,y2),h,b,BLUE)
+txt(d,(375,700),"→",58,RED,True); txt(d,(705,700),"→",58,RED,True)
+card(d,(90,990,990,1410),"熊本県の公式支援","県獣医師会・熊本県・熊本市が連携。\n動物病院での一時預かり、健康相談、\n診療支援などを実施。",RED); source(d,"熊本県 9/10更新／ネコのバス報道 9/26")
+sc.append({"image":save(3,im),"narration":"熊本では、地震で被災した犬猫と飼い主を支えるペット救護本部が活動中。動物病院での一時預かりや健康相談に加え、猫の一時預かりを支援するネコのバスも活用されています。"})
+# 4 ageing social issue
+im=Image.new("RGB",(W,H),BG); d=ImageDraw.Draw(im); header(d,"国内・動物福祉","03"); txt(d,(58,275),"飼い主の高齢化",72,INK,True); txt(d,(58,365),"犬猫にも影響",70,RED,True)
+# relationship map
+cx=540; cy=900; d.ellipse((380,740,700,1060),fill=NAVY); txt(d,(540,850),"飼育を",45,WHITE,True,"mm"); txt(d,(540,925),"続けられない",39,WHITE,True,"mm")
+for x,y,h,b in [(80,590,"高齢化","入院・施設入所"),(700,590,"多頭飼育","管理が困難に"),(80,1160,"保護団体","受け皿の負担"),(700,1160,"地域福祉","人と動物を支援")]:
+ card(d,(x,y,x+300,y+260),h,b,RED if x<400 else BLUE)
+for p in [((380,820),(380,720)),((700,820),(700,720)),((380,980),(380,1160)),((700,980),(700,1160))]: d.line(p,fill=(120,135,153),width=8)
+txt(d,(80,1540),"「多頭飼育＝悪」で終わらせず",38,INK,True); txt(d,(80,1605),"人の福祉と動物福祉を一緒に考える",38,BLUE,True); source(d,"9/26報道を基に整理")
+sc.append({"image":save(4,im),"narration":"飼い主の高齢化や多頭飼育を背景に、犬猫を飼い続けられなくなる問題も報じられました。保護だけではなく、人の福祉と動物福祉を一緒に支える仕組みが課題です。"})
+# 5 aeon pet hub
+im=Image.new("RGB",(W,H),BG); d=ImageDraw.Draw(im); header(d,"企業・業界","04"); txt(d,(58,275),"ペット小売は",66,INK,True); txt(d,(58,365),"“売るだけ”じゃない",68,BLUE,True)
+d.ellipse((355,690,725,1060),fill=NAVY); txt(d,(540,820),"PETEMO",55,WHITE,True,"mm"); txt(d,(540,900),"動物愛護週間",37,Y,True,"mm")
+for x,y,h,b in [(80,560,"寄付","ペットシーツ\n猫砂"),(700,560,"譲渡会","最大19店舗\n30回予定"),(80,1160,"啓発","適正飼養を\n店頭から"),(700,1160,"MC","マイクロチップ\n装着促進")]:
+ card(d,(x,y,x+300,y+270),h,b,BLUE if x>400 else RED); d.line((540,875,x+150,y+135),fill=(170,181,194),width=6)
+txt(d,(75,1515),"9/1〜9/30　全国の店舗・オンラインで実施",34,INK,True); source(d,"イオンペット公式")
+sc.append({"image":save(5,im),"narration":"イオンペットは9月いっぱい、ペテモと考える動物愛護週間を実施。自治体へのペットシーツや猫砂の寄付、譲渡会、マイクロチップ装着促進など、小売店舗を動物愛護の接点として活用しています。"})
+# 6 rabies world
+im=Image.new("RGB",(W,H),BG); d=ImageDraw.Draw(im); header(d,"海外・感染症","05"); txt(d,(58,275),"9月28日は",61,INK,True); txt(d,(58,360),"世界狂犬病デー",78,RED,True); txt(d,(58,470),"2026テーマ：Stronger Together",34,BLUE,True)
+# three columns
+for x,h,b,col in [(70,"日本","国内発生を\n認めていない",BLUE),(390,"世界","犬のワクチン\n監視・教育",RED),(710,"ブータン","WHOが犬由来の\n人狂犬病排除を認定",Y)]:
+ d.rounded_rectangle((x,680,x+300,1190),30,fill=WHITE,outline=(210,219,229),width=3); d.ellipse((x+95,735,x+205,845),fill=col); txt(d,(x+150,790),"●",40,WHITE,True,"mm"); txt(d,(x+150,900),h,42,INK,True,"mm"); txt(d,(x+150,1020),b,34,INK,False,"mm")
+card(d,(90,1320,990,1580),"One Health","人・動物・環境を分けず、\n予防接種・監視・医療・教育を連携",NAVY); source(d,"WHO 9/28／WHO Bhutan 9/4")
+sc.append({"image":save(6,im),"narration":"そして今日9月28日は世界狂犬病デー。WHOの今年のテーマは、ストロンガー・トゥギャザー。ブータンは今月、犬から人へ感染する狂犬病を公衆衛生上の問題として排除した国としてWHOの認定を受けました。"})
+# 7 takeaway
+im=Image.new("RGB",(W,H),NAVY); d=ImageDraw.Draw(im); txt(d,(60,95),"THIS WEEK'S TAKEAWAY",34,Y,True); txt(d,(60,200),"今週のニュースは",72,WHITE,True); txt(d,(60,300),"全部つながっている",78,WHITE,True)
+items=[("事故防止","逃走を防ぐ管理"),("防災","避難後の支援"),("終生飼養","高齢化への備え"),("小売","販売以外の役割"),("感染症","予防を続ける意味")]
+for j,(h,b) in enumerate(items): y=520+j*220; d.rounded_rectangle((65,y,1015,y+165),28,fill=(25,48,78)); d.ellipse((100,y+43,180,y+123),fill=[RED,BLUE,Y,BLUE,RED][j]); txt(d,(140,y+83),str(j+1),28,WHITE,True,"mm"); txt(d,(225,y+32),h,39,Y,True); txt(d,(225,y+88),b,38,WHITE,True)
+txt(d,(60,1690),"ワンコ暮らし研究所｜WANKO NEWS",29,(180,197,217))
+sc.append({"image":save(7,im),"narration":"今週の5テーマは、事故防止、防災、終生飼養、小売の役割、感染症対策。ニュースをその場限りで終わらせず、普段のペットとの暮らしにどうつながるかまで見ていきます。"})
 
-job={"job_id":"WEEKLY-PET-NEWS-20260928","project_id":"WEEKLY-PET-NEWS-20260928","series":"news","category":"short","title":"今週のペットニュース","youtube":{"title":"今週のペットニュース5選｜ウルフドッグ・災害支援・動物愛護週間・狂犬病【9/22〜9/28】","description":"2026年9月22日〜28日の国内外ペット関連ニュースをまとめました。事件・防災・動物福祉・ペット小売・感染症を、確認できた情報に基づいて整理しています。\n\n主な確認先：北海道の報道各社、イオンペット公式、WHOほか。\n※事件を実写風に再現した画像は使用せず、説明用イラスト・図解で構成しています。\n※逮捕は有罪確定を意味しません。","tags":["ペットニュース","犬","猫","動物愛護","狂犬病","ウルフドッグ","ペット防災"],"category_id":"15","made_for_kids":False,"contains_synthetic_media":True,"schedule_publish":False,"publish_immediately":False},"video":{"width":1080,"height":1920},"voice":{"speed":1.45},"scenes":sc,"narration_enabled":True,"append_common_cta":False}
-os.environ["VOICEVOX_SPEED"]="1.45"; wait_until_ready(); video=render_scheduled_job(job,ASSET,OUT,synthesize); res=upload_video(video,job); print("NEWS_UPLOAD_RESULT="+str(res),flush=True)
+job={"job_id":"WEEKLY-PET-NEWS-20260928","project_id":"WEEKLY-PET-NEWS-20260928","series":"news","category":"short","title":"今週のペットニュース","youtube":{"title":"今週のペットニュース5選｜ウルフドッグ・災害支援・動物愛護週間・狂犬病【9/22〜9/28】","description":"2026年9月22日〜28日の国内外ペット関連ニュースをまとめました。\n\nウルフドッグ事件、熊本のペット防災、飼い主高齢化、イオンペットの動物愛護週間、世界狂犬病デーを扱います。\n\n※事件を実写風に再現した画像は使用せず、説明用イラスト・図解で構成しています。\n※逮捕は有罪確定を意味しません。","tags":["ペットニュース","犬","猫","動物愛護","狂犬病","ウルフドッグ","ペット防災"],"category_id":"15","made_for_kids":False,"contains_synthetic_media":True,"schedule_publish":False,"publish_immediately":False},"video":{"width":1080,"height":1920},"voice":{"speed":1.52},"scenes":sc,"narration_enabled":True,"append_common_cta":False}
+os.environ["VOICEVOX_SPEED"]="1.52"; wait_until_ready(); video=render_scheduled_job(job,ASSET,OUT,synthesize); res=upload_video(video,job); print("NEWS_UPLOAD_RESULT="+str(res),flush=True)
