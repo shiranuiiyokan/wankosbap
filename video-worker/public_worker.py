@@ -22,13 +22,15 @@ CATEGORY_ENV = {
     "dog": "SCHEDULED_DOG_FOLDER_ID",
     "mbti": "SCHEDULED_MBTI_FOLDER_ID",
     "cat_other": "SCHEDULED_CAT_FOLDER_ID",
+    "news": "SCHEDULED_NEWS_FOLDER_ID",
     "long": "SCHEDULED_LONG_FOLDER_ID",
 }
-DEFAULT_LIMITS = {"dog": 3, "mbti": 3, "cat_other": 3, "long": 1}
+DEFAULT_LIMITS = {"dog": 3, "mbti": 3, "cat_other": 3, "news": 2, "long": 1}
 DEFAULT_SLOTS = {
     "dog": ["09:30", "13:00", "19:00"],
     "mbti": ["08:00", "15:30", "21:00"],
     "cat_other": ["10:30", "17:00", "22:00"],
+    "news": ["14:30", "19:30", "21:30"],
     "long": ["20:30"],
 }
 MANIFEST_NAMES = ("manifest.json", "job.json", "metadata.json")
@@ -203,6 +205,7 @@ def _slots_for(category):
         "dog": "DOG_PUBLISH_SLOTS",
         "mbti": "MBTI_PUBLISH_SLOTS",
         "cat_other": "CAT_PUBLISH_SLOTS",
+        "news": "NEWS_PUBLISH_SLOTS",
         "long": "LONG_PUBLISH_SLOTS",
     }[category]
     raw = os.getenv(env_name, "").strip()
@@ -318,7 +321,7 @@ def normalize_job(manifest, category, folder_name, job_dir, publish_index):
         "voice": dict(manifest.get("voice") or {}),
         "scenes": normalized,
         "narration_enabled": narration_enabled,
-        "append_common_cta": manifest.get("append_common_cta", category != "long"),
+        "append_common_cta": manifest.get("append_common_cta", category not in {"long", "news"}),
     }
     if manifest.get("fixed_scene_durations"):
         job["fixed_scene_durations"] = True
@@ -331,6 +334,10 @@ def voice_speed(job):
         if voice.get("speed") is not None:
             return str(voice["speed"])
         return os.getenv("LONG_VOICE_SPEED", "1.25")
+    if job.get("category") == "news":
+        if voice.get("speed") is not None:
+            return str(voice["speed"])
+        return os.getenv("NEWS_VOICE_SPEED", "1.55")
 
     # Keep Shorts brisk even when older manifests still contain speed=1.50.
     target = float(os.getenv("SHORTS_VOICE_SPEED", "1.65"))
@@ -347,6 +354,7 @@ def category_limits():
         "dog": int(os.getenv("DOG_JOB_LIMIT", "3")),
         "mbti": int(os.getenv("MBTI_JOB_LIMIT", "3")),
         "cat_other": int(os.getenv("CAT_JOB_LIMIT", "3")),
+        "news": int(os.getenv("NEWS_JOB_LIMIT", "2")),
         "long": int(os.getenv("LONG_JOB_LIMIT", "1")),
     }
 
@@ -439,7 +447,13 @@ def main():
 
     processed = 0
     failures = 0
-    for category in ("dog", "mbti", "cat_other", "long"):
+    category_order = ("dog", "mbti", "cat_other", "news", "long")
+    category_allowlist_raw = os.getenv("CATEGORY_ALLOWLIST", "").strip()
+    if category_allowlist_raw:
+        category_allowlist = {x.strip() for x in category_allowlist_raw.split(",") if x.strip()}
+        category_order = tuple(x for x in category_order if x in category_allowlist)
+
+    for category in category_order:
         source = folders.get(category)
         if not source:
             continue
