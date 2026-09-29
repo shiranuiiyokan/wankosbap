@@ -214,8 +214,16 @@ def _slots_for(category):
 
 def fallback_publish_at(category, index, now=None):
     now = now or datetime.now(JST)
-    days_ahead = max(0, int(os.getenv("PUBLISH_DAYS_AHEAD", "1")))
-    start_date = (now + timedelta(days=days_ahead)).date()
+
+    # The regular worker is intended to prepare the next day's slots when it
+    # runs at night. GitHub schedule delays can push that run past midnight,
+    # so anchoring publication to "actual run date + 1" can accidentally skip
+    # an entire day. Use a local cutoff instead:
+    #   before 21:00 JST -> fill today's remaining slots
+    #   21:00 JST or later -> fill tomorrow's slots
+    cutoff_hour = int(os.getenv("PUBLISH_DAY_CUTOFF_HOUR", "21"))
+    cutoff_hour = min(23, max(0, cutoff_hour))
+    start_date = now.date() + timedelta(days=1 if now.hour >= cutoff_hour else 0)
     candidates = []
     for day_offset in range(8):
         target_date = start_date + timedelta(days=day_offset)
