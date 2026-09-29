@@ -109,7 +109,7 @@ jobs:
           CAT_JOB_LIMIT: "3"
           NEWS_JOB_LIMIT: "2"
           LONG_JOB_LIMIT: "1"
-          PUBLISH_DAYS_AHEAD: "1"
+          PUBLISH_DAY_CUTOFF_HOUR: "21"
           DOG_PUBLISH_SLOTS: "09:30,13:00,19:00"
           MBTI_PUBLISH_SLOTS: "08:00,15:30,21:00"
           CAT_PUBLISH_SLOTS: "10:30,17:00,22:00"
