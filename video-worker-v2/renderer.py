@@ -193,6 +193,40 @@ def _concat_av(files: list[Path], output: Path):
     ])
 
 
+def _render_cta(output_dir: Path, width: int, height: int, fps: int, duration: float = 1.2) -> Path:
+    image = output_dir / "cta_v2.png"
+    clip = output_dir / "cta_v2.mp4"
+    canvas = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(canvas)
+    title_size = max(38, int(min(width, height) * 0.070))
+    sub_size = max(24, int(min(width, height) * 0.040))
+    title_font = _font(title_size, True)
+    sub_font = _font(sub_size, False)
+    title = "WANKO SNAP"
+    sub = "犬との暮らしを、もう少し深く。"
+    for text, font, y in [
+        (title, title_font, int(height * 0.43)),
+        (sub, sub_font, int(height * 0.53)),
+    ]:
+        box = draw.textbbox((0, 0), text, font=font)
+        x = (width - (box[2] - box[0])) // 2
+        draw.text((x, y), text, font=font, fill=(24, 24, 24))
+    canvas.save(image, "PNG")
+
+    run([
+        "ffmpeg", "-y",
+        "-loop", "1", "-i", str(image),
+        "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+        "-t", f"{duration:.3f}",
+        "-r", str(fps),
+        "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+        "-shortest", "-movflags", "+faststart", str(clip),
+    ])
+    return clip
+
+
 def _speed_for(job: dict) -> float:
     voice = job.get("voice") or {}
     if voice.get("speed") is not None:
@@ -325,6 +359,9 @@ def render_job(job: dict, job_dir: Path, output_dir: Path,
         _concat_video_only(visual_clips, visual_group)
         _mux(visual_group, plan["audio"], group_clip, plan["duration"])
         rendered_groups.append(group_clip)
+
+    if job.get("append_common_cta") and job["format"] == "short":
+        rendered_groups.append(_render_cta(output_dir, width, height, fps))
 
     final = output_dir / "final.mp4"
     _concat_av(rendered_groups, final)
