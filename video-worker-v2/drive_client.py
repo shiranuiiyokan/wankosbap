@@ -60,3 +60,11 @@ def storage_quota(service):
         return service.about().get(fields="storageQuota").execute().get("storageQuota") or {}
     except Exception as exc:
         return {"error": f"{type(exc).__name__}: {exc}"}
+
+
+def find_named_child(service, folder_id, names):
+    wanted = set(names)
+    for item in list_children(service, folder_id):
+        if item.get("name") in wanted and item.get("mimeType") != "application/vnd.google-apps.folder":
+            return item
+    return None
