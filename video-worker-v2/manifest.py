@@ -56,7 +56,10 @@ def normalize_manifest(raw: dict, category: str, job_dir: Path) -> dict:
             "duration_hint": source.get("duration_seconds", source.get("duration")),
             "style_role": str(source.get("style_role") or source.get("image_format") or "auto"),
             "motion": str(source.get("motion") or "fade_text"),
-            "photo_credit": source.get("photo_credit"),
+            "photo_credit": source.get("photo_credit") if source.get("photo_credit") is not None else (
+                "auto" if source.get("photo_credit_mode") == "auto" else None
+            ),
+            "dog_camera_gaze": bool(source.get("dog_camera_gaze", False)),
             "pronunciation": source.get("pronunciation") or {},
         }
         if source.get("narration_reading"):
