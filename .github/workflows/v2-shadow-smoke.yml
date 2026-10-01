@@ -33,14 +33,15 @@ jobs:
           done
           docker logs voicevox
           exit 1
-      - name: Read-only DOG preflight
+      - name: Read-only LONG preflight
         working-directory: video-worker-v2
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          SCHEDULED_DOG_FOLDER_ID: "1tS_bBKMPmmqXq-ROYi9PvgYI2wit9FgZ"
-          V2_CATEGORY: "dog"
+          SCHEDULED_LONG_FOLDER_ID: "1cmYcKgmQhj-LesauZ92BCS4-mC44fUBP"
+          V2_CATEGORY: "long"
+          V2_PROJECT_FILTER: "LONG-NAME-001"
           V2_PREFLIGHT_ONLY: "true"
           V2_STRICT_QC: "false"
           V2_MIN_FREE_GB: "4"
-          SHORT_VOICE_SPEED_V2: "1.45"
+          LONG_VOICE_SPEED_V2: "1.20"
         run: python shadow_worker.py
