@@ -1,0 +1,100 @@
+name: Video worker v2 shadow test
+
+on:
+  workflow_dispatch:
+    inputs:
+      category:
+        description: "Scheduled category to inspect"
+        required: true
+        default: "dog"
+        type: choice
+        options: ["dog", "mbti", "cat_other", "news", "long"]
+      project_filter:
+        description: "Optional project/folder substring"
+        required: false
+        default: ""
+        type: string
+      preflight_only:
+        description: "Synthesize continuous audio + QC only"
+        required: true
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+      strict_qc:
+        description: "Block on pronunciation/duration QC"
+        required: true
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: video-worker-v2-shadow
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Syntax and unit tests
+        working-directory: video-worker-v2
+        run: |
+          python -m py_compile *.py
+          python -m unittest -v test_v2.py
+
+  shadow:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-cjk
+          pip install -r video-worker-v2/requirements.txt
+
+      - name: Start free local VOICEVOX engine
+        run: |
+          docker pull voicevox/voicevox_engine:cpu-latest
+          docker run -d --name voicevox -p 127.0.0.1:50021:50021 voicevox/voicevox_engine:cpu-latest
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:50021/version >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs voicevox
+          exit 1
+
+      - name: Run isolated v2 shadow
+        working-directory: video-worker-v2
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+
+          SCHEDULED_DOG_FOLDER_ID: "1tS_bBKMPmmqXq-ROYi9PvgYI2wit9FgZ"
+          SCHEDULED_MBTI_FOLDER_ID: "16tZkJMMCYbMiugO5pWfEeyvA5fGHXvR0"
+          SCHEDULED_CAT_FOLDER_ID: "1F2Dp0uhLNKbLcxDUatOz0QhJDnsabR8o"
+          SCHEDULED_NEWS_FOLDER_ID: "1hNtd1t73hQNTFChrvfZhvFkgf0CPeaNF"
+          SCHEDULED_LONG_FOLDER_ID: "1cmYcKgmQhj-LesauZ92BCS4-mC44fUBP"
+
+          V2_CATEGORY: ${{ inputs.category }}
+          V2_PROJECT_FILTER: ${{ inputs.project_filter }}
+          V2_PREFLIGHT_ONLY: ${{ inputs.preflight_only }}
+          V2_STRICT_QC: ${{ inputs.strict_qc }}
+          V2_MIN_FREE_GB: "4"
+
+          SHORT_VOICE_SPEED_V2: "1.45"
+          NEWS_VOICE_SPEED_V2: "1.45"
+          LONG_VOICE_SPEED_V2: "1.20"
+        run: python shadow_worker.py
