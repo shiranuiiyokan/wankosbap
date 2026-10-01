@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -15,6 +16,19 @@ from voicevox_adapter import VoiceVoxClient
 DEFAULT_SHORT_SPEED = 1.45
 DEFAULT_LONG_SPEED = 1.20
 DEFAULT_NEWS_SPEED = 1.45
+INITIAL_CREDITS = ["M.K.", "A.T.", "Y.N.", "K.S.", "R.H.", "N.M.", "S.K.", "H.Y.", "T.A.", "K.M."]
+
+
+def _resolve_photo_credit(project_id: str, scene: dict, index: int):
+    credit = scene.get("photo_credit")
+    if credit != "auto":
+        return credit
+    if scene.get("dog_camera_gaze"):
+        return "WANKO SNAP"
+    key = f"{project_id}:{scene.get('scene_id', index)}".encode("utf-8")
+    digest = hashlib.sha256(key).digest()
+    return INITIAL_CREDITS[int.from_bytes(digest[:2], "big") % len(INITIAL_CREDITS)]
+
 
 
 def run(cmd, timeout=None):
@@ -291,7 +305,9 @@ def render_job(job: dict, job_dir: Path, output_dir: Path,
             clip = output_dir / f"visual_{scene_counter:03d}.mp4"
 
             _sanitize_image(job_dir / scene["image"], sanitized, width, height)
-            _overlay_png(scene, overlay, width, height)
+            display_scene = dict(scene)
+            display_scene["photo_credit"] = _resolve_photo_credit(job["project_id"], scene, scene_counter)
+            _overlay_png(display_scene, overlay, width, height)
             _render_visual_scene(
                 sanitized,
                 overlay,
