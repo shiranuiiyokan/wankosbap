@@ -5,7 +5,7 @@ import os
 import shutil
 from pathlib import Path
 
-from drive_client import build_drive_service, download_folder_recursive, list_child_folders, storage_quota
+from drive_client import build_drive_service, download_file, download_folder_recursive, find_named_child, list_child_folders, storage_quota
 from manifest import normalize_manifest
 from qc import disk_guard
 from renderer import render_job
@@ -45,7 +45,8 @@ def _pick_folder(service, parent_id, project_filter: str | None):
         folders = [x for x in folders if project_filter in x.get("name", "")]
     if not folders:
         raise RuntimeError("no matching scheduled folder")
-    return folders[0]
+    pick = os.getenv("V2_PICK", "oldest").strip().lower()
+    return folders[-1] if pick == "latest" else folders[0]
 
 
 def main():
@@ -76,10 +77,19 @@ def main():
     shutil.rmtree(out_dir, ignore_errors=True)
 
     try:
-        download_folder_recursive(service, folder["id"], job_dir)
-        manifest_path = _find_manifest(job_dir)
-        raw = json.loads(manifest_path.read_text(encoding="utf-8"))
-        job = normalize_manifest(raw, category, job_dir)
+        if preflight_only:
+            manifest_item = find_named_child(service, folder["id"], MANIFEST_NAMES)
+            if not manifest_item:
+                raise FileNotFoundError("manifest.json/job.json/metadata.json missing")
+            manifest_path = job_dir / manifest_item["name"]
+            download_file(service, manifest_item["id"], manifest_path)
+            raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+            job = normalize_manifest(raw, category, job_dir, validate_images=False)
+        else:
+            download_folder_recursive(service, folder["id"], job_dir)
+            manifest_path = _find_manifest(job_dir)
+            raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+            job = normalize_manifest(raw, category, job_dir, validate_images=True)
         result = render_job(job, job_dir, out_dir, strict_qc=strict_qc, preflight_only=preflight_only)
         result.update({
             "source_folder": folder["name"],
