@@ -34,7 +34,7 @@ jobs:
         run: python -m py_compile video-worker/*.py
 
   credential-gate:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     needs: validate
     runs-on: ubuntu-latest
     outputs:
@@ -102,7 +102,7 @@ jobs:
           SCHEDULED_DONE_FOLDER_ID: "12F-_M0xRuCnjqs6xQ-plTYWOa3LAsBIV"
           SCHEDULED_ERROR_FOLDER_ID: "12mzxgiCEsZdBQxvz-Uso-0Ozzrqol_HI"
 
-          DRY_RUN: ${{ inputs.dry_run }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
           MAX_ATTEMPTS: "3"
           DOG_JOB_LIMIT: "3"
           MBTI_JOB_LIMIT: "3"
@@ -118,7 +118,7 @@ jobs:
           SHORTS_VOICE_SPEED: "1.65"
           NEWS_VOICE_SPEED: "1.55"
           LONG_VOICE_SPEED: "1.25"
-          CATEGORY_ALLOWLIST: ${{ (github.event.schedule == '15 5 * * *' || github.event.schedule == '15 10 * * *') && 'news' || '' }}
+          CATEGORY_ALLOWLIST: ${{ (github.event_name == 'push' || github.event.schedule == '15 5 * * *' || github.event.schedule == '15 10 * * *') && 'news' || '' }}
           VOICEVOX_SPEAKER_NAME: "ずんだもん"
           VOICEVOX_STYLE_NAME: "ノーマル"
           CTA_ENABLED: "true"
