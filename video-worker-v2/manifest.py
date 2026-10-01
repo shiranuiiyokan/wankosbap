@@ -21,7 +21,7 @@ def _existing_image(job_dir: Path, image: str) -> Path:
     raise FileNotFoundError(f"scene image not found: {image}")
 
 
-def normalize_manifest(raw: dict, category: str, job_dir: Path) -> dict:
+def normalize_manifest(raw: dict, category: str, job_dir: Path, validate_images: bool = True) -> dict:
     project_id = str(raw.get("project_id") or raw.get("企画ID") or raw.get("job_id") or job_dir.name)
     title = str(raw.get("title") or (raw.get("youtube") or {}).get("title") or project_id)
     video = dict(raw.get("video") or {})
@@ -42,14 +42,14 @@ def normalize_manifest(raw: dict, category: str, job_dir: Path) -> dict:
         image = str(source.get("image") or "").strip()
         if not image:
             raise ValueError(f"scene {idx} missing image")
-        resolved = _existing_image(job_dir, image)
+        resolved = _existing_image(job_dir, image) if validate_images else Path(image)
         narration = str(source.get("narration") or source.get("voice") or "").strip()
         if not narration:
             raise ValueError(f"scene {idx} missing narration")
 
         item = {
             "scene_id": str(source.get("scene_id") or f"{idx:02d}"),
-            "image": str(resolved.relative_to(job_dir)),
+            "image": str(resolved.relative_to(job_dir)) if validate_images else image,
             "narration": narration,
             "overlay_text": str(source.get("overlay_text") or source.get("on_screen_text") or "").strip(),
             "chapter": str(source.get("chapter") or "main").strip() or "main",
