@@ -1,0 +1,42 @@
+name: One-time v2 Drive lane permission check
+
+on:
+  push:
+    branches: ["v2-hybrid-rollout-20261002"]
+    paths:
+      - "video-worker-v2/lane_check_trigger.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Drive dependencies
+        run: pip install -r video-worker-v2/requirements.txt
+      - name: Confirm service-account access to isolated v2 lanes
+        working-directory: video-worker-v2
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          V2_DOG: "1-rXG54yNISgX7Sx69y2qlg40LsIakBat"
+          V2_MBTI: "1aRZgjrmj_MxmbhraK_Yi-bJJFEfTrrdp"
+          V2_CAT: "1gqijyx4n9EVZwXD13sTVlGVv0CQjv6ua"
+          V2_NEWS: "1toNSuGd8bVrZB0DOXm0kFtuXVIBjn6l1"
+          V2_LONG: "1O3hAUmh-9Afp2aX_aaHQQkViG_8CRtSe"
+          V2_DONE: "1fa3JmVUETnLEVJKf7kjXL4UZixgpI5ng"
+          V2_ERROR: "1urPnVZY6_qcjANd-bJYv1rWTfXX9e0DO"
+        run: |
+          python - <<'PY'
+          import os
+          from drive_client import build_drive_service, list_child_folders
+          service = build_drive_service()
+          for key in ("V2_DOG","V2_MBTI","V2_CAT","V2_NEWS","V2_LONG","V2_DONE","V2_ERROR"):
+              folder_id = os.environ[key]
+              children = list_child_folders(service, folder_id, limit=5)
+              print(f"{key}=OK child_folders={len(children)}")
+          PY
