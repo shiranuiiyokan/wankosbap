@@ -1,0 +1,126 @@
+name: V2 blue-green production
+
+on:
+  workflow_dispatch:
+    inputs:
+      category:
+        description: "Category to run"
+        required: true
+        default: "dog"
+        type: choice
+        options: ["dog", "mbti", "cat_other", "news", "long"]
+      publish:
+        description: "Upload/schedule to YouTube and move Drive folder"
+        required: true
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v2-blue-green-production
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Syntax and unit tests
+        working-directory: video-worker-v2
+        run: |
+          python -m py_compile *.py
+          python -m unittest -v test_v2.py
+
+  credential-gate:
+    needs: validate
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          DRIVE_OK: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          YT_ID_OK: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YT_SECRET_OK: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YT_REFRESH_OK: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+        shell: bash
+        run: |
+          if [ -n "$DRIVE_OK" ] && [ -n "$YT_ID_OK" ] && [ -n "$YT_SECRET_OK" ] && [ -n "$YT_REFRESH_OK" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  produce:
+    if: needs.credential-gate.outputs.ready == 'true'
+    needs: [validate, credential-gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install free renderer dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-cjk
+          pip install -r video-worker-v2/requirements.txt
+
+      - name: Start free local VOICEVOX
+        run: |
+          docker pull voicevox/voicevox_engine:cpu-latest
+          docker run -d --name voicevox -p 127.0.0.1:50021:50021 voicevox/voicevox_engine:cpu-latest
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:50021/version >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          docker logs voicevox
+          exit 1
+
+      - name: Run v2 against isolated Drive lane
+        working-directory: video-worker-v2
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+
+          SCHEDULED_DOG_FOLDER_ID: "1-rXG54yNISgX7Sx69y2qlg40LsIakBat"
+          SCHEDULED_MBTI_FOLDER_ID: "1aRZgjrmj_MxmbhraK_Yi-bJJFEfTrrdp"
+          SCHEDULED_CAT_OTHER_FOLDER_ID: "1gqijyx4n9EVZwXD13sTVlGVv0CQjv6ua"
+          SCHEDULED_CAT_FOLDER_ID: "1gqijyx4n9EVZwXD13sTVlGVv0CQjv6ua"
+          SCHEDULED_NEWS_FOLDER_ID: "1toNSuGd8bVrZB0DOXm0kFtuXVIBjn6l1"
+          SCHEDULED_LONG_FOLDER_ID: "1O3hAUmh-9Afp2aX_aaHQQkViG_8CRtSe"
+          SCHEDULED_DONE_FOLDER_ID: "1fa3JmVUETnLEVJKf7kjXL4UZixgpI5ng"
+          SCHEDULED_ERROR_FOLDER_ID: "1urPnVZY6_qcjANd-bJYv1rWTfXX9e0DO"
+
+          CATEGORY_ALLOWLIST: ${{ inputs.category }}
+          V2_PUBLISH_ENABLED: ${{ inputs.publish }}
+          V2_ACTIVATION_TOKEN: ${{ inputs.publish == 'true' && 'I_UNDERSTAND_V2_PUBLISHES' || '' }}
+          V2_MAX_UPLOADS_PER_RUN: "3"
+
+          DOG_JOB_LIMIT_V2: "3"
+          MBTI_JOB_LIMIT_V2: "3"
+          CAT_OTHER_JOB_LIMIT_V2: "3"
+          NEWS_JOB_LIMIT_V2: "2"
+          LONG_JOB_LIMIT_V2: "1"
+
+          PUBLISH_DAY_CUTOFF_HOUR: "21"
+          DOG_PUBLISH_SLOTS_V2: "09:30,13:00,19:00"
+          MBTI_PUBLISH_SLOTS_V2: "08:00,15:30,21:00"
+          CAT_OTHER_PUBLISH_SLOTS_V2: "10:30,17:00,22:00"
+          NEWS_PUBLISH_SLOTS_V2: "14:30,19:30,21:30"
+          LONG_PUBLISH_SLOTS_V2: "20:30"
+
+          SHORT_VOICE_SPEED_V2: "1.45"
+          NEWS_VOICE_SPEED_V2: "1.45"
+          LONG_VOICE_SPEED_V2: "1.20"
+        run: python production_worker.py
