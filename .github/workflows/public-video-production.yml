@@ -104,13 +104,13 @@ jobs:
 
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
           MAX_ATTEMPTS: "3"
-          DOG_JOB_LIMIT: "3"
+          DOG_JOB_LIMIT: "2"
           MBTI_JOB_LIMIT: "3"
           CAT_JOB_LIMIT: "3"
           NEWS_JOB_LIMIT: "2"
           LONG_JOB_LIMIT: "3"
           PUBLISH_DAY_CUTOFF_HOUR: "21"
-          DOG_PUBLISH_SLOTS: "09:30,13:00,19:00"
+          DOG_PUBLISH_SLOTS: "13:00,19:00"
           MBTI_PUBLISH_SLOTS: "08:00,15:30,21:00"
           CAT_PUBLISH_SLOTS: "10:30,17:00,22:00"
           NEWS_PUBLISH_SLOTS: "14:30,19:30,21:30"
