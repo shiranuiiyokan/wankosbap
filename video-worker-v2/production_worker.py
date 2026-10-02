@@ -159,16 +159,18 @@ def category_limits() -> dict[str, int]:
 
 
 def render_strict(job: dict, job_dir: Path, out_dir: Path):
-    result = render_job(job, job_dir, out_dir, strict_qc=False, preflight_only=True)
-    pqc = result["pronunciation_qc"]
-    dqc = result["duration_qc"]
-    if not pqc["ok"]:
-        raise QCWait("PRON:" + ",".join(x.replace("unresolved pronunciation risk: ", "") for x in pqc["reasons"]))
-    if not dqc["ok"]:
-        raise QCWait("DURATION:" + "; ".join(dqc["reasons"]))
-    # Reuse preflight is cheap compared with publishing a bad video. The full render
-    # performs synthesis again but keeps publication gated by the measured duration.
-    return render_job(job, job_dir, out_dir, strict_qc=True, preflight_only=False)
+    # render_job synthesizes the continuous audio first and applies QC before any
+    # visual encoding. A QC failure therefore avoids the expensive video render
+    # without synthesizing the narration twice.
+    try:
+        return render_job(job, job_dir, out_dir, strict_qc=True, preflight_only=False)
+    except RuntimeError as exc:
+        message = str(exc)
+        if "unresolved pronunciation risk:" in message:
+            raise QCWait("PRON:" + message) from exc
+        if " narration " in message and "target" in message:
+            raise QCWait("DURATION:" + message) from exc
+        raise
 
 
 def process_one(service, category: str, source: str, folder: dict,
