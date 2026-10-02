@@ -1,0 +1,29 @@
+name: Validate v2 hybrid rollout
+
+on:
+  push:
+    branches: ["v2-hybrid-rollout-20261002"]
+    paths:
+      - "video-worker-v2/**"
+      - ".github/workflows/v2-hybrid-validate.yml"
+  pull_request:
+    paths:
+      - "video-worker-v2/**"
+      - ".github/workflows/v2-*.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Syntax and unit tests
+        working-directory: video-worker-v2
+        run: |
+          python -m py_compile *.py
+          python -m unittest -v test_v2.py

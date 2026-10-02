@@ -5,7 +5,7 @@ from pathlib import Path
 DEFAULT_MAP_PATH = Path(__file__).parent / "voice_reading_map.json"
 
 _LATIN_TOKEN = re.compile(r"(?<![A-Za-z0-9._-])[A-Za-z][A-Za-z0-9._-]*(?![A-Za-z0-9._-])")
-_NUMBER_UNIT = re.compile(r"\d+(?:[.,]\d+)?\s*(?:cm|mm|kg|g|ml|L|％|%|歳|回|頭|匹|分|秒|年|月|日)", re.IGNORECASE)
+_NUMBER_UNIT = re.compile(r"\d+(?:[.,]\d+)?\s*(?:cm|mm|kg|g|ml|L|％|%)", re.IGNORECASE)
 _RISK_SYMBOLS = re.compile(r"[×/／+＋&＆]")
 
 
@@ -49,7 +49,7 @@ def unresolved_risks(text: str, known_sources: set[str] | None = None) -> list[s
         if token not in known_sources:
             risks.append(token)
     for token in _NUMBER_UNIT.findall(str(text or "")):
-        if token not in known_sources and not any(token.endswith(k) for k in known_sources):
+        if token not in known_sources and not any(token.lower().endswith(k.lower()) for k in known_sources):
             risks.append(token)
     for token in _RISK_SYMBOLS.findall(str(text or "")):
         if token not in known_sources:

@@ -16,6 +16,12 @@ class PronunciationTests(unittest.TestCase):
     def test_unknown_latin_flagged(self):
         self.assertIn("XYZ", unresolved_risks("XYZを確認", {"JKC"}))
 
+    def test_japanese_counter_is_not_flagged(self):
+        self.assertEqual(unresolved_risks("2回確認して3頭を比較", {"JKC"}), [])
+
+    def test_known_latin_unit_suffix_is_not_flagged(self):
+        self.assertEqual(unresolved_risks("体高40cm、体重8kg", {"cm", "kg"}), [])
+
 
 class ManifestTests(unittest.TestCase):
     def test_duration_seconds_and_root_image_compatibility(self):
