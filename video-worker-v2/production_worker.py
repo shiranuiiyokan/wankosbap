@@ -7,8 +7,9 @@ import traceback
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from drive_client import build_drive_service, download_folder_recursive, list_child_folders
+from drive_client import build_drive_service, download_folder_recursive, list_child_folders, storage_quota
 from manifest import normalize_manifest
+from qc import disk_guard
 from renderer import render_job
 from youtube_upload import upload_video
 
@@ -217,7 +218,13 @@ def main():
     if publish_enabled and os.getenv("V2_ACTIVATION_TOKEN", "") != "I_UNDERSTAND_V2_PUBLISHES":
         raise RuntimeError("v2 publishing is locked; activation token missing")
 
+    guard = disk_guard(ROOT, float(os.getenv("V2_MIN_FREE_GB", "4")))
+    print("V2_DISK_GUARD=" + json.dumps(guard.to_dict(), ensure_ascii=False), flush=True)
+    if not guard.ok:
+        raise SystemExit(2)
+
     service = build_drive_service()
+    print("V2_DRIVE_QUOTA=" + json.dumps(storage_quota(service), ensure_ascii=False), flush=True)
     limits = category_limits()
     max_jobs = min(20, max(1, int(os.getenv("V2_MAX_UPLOADS_PER_RUN", "12"))))
 
