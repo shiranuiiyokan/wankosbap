@@ -1,6 +1,8 @@
 name: V2 blue-green production
 
 on:
+  schedule:
+    - cron: "55 11 * * *" # 20:55 JST; DOG canary before legacy 21:17 worker
   workflow_dispatch:
     inputs:
       category:
@@ -102,19 +104,19 @@ jobs:
           SCHEDULED_DONE_FOLDER_ID: "1fa3JmVUETnLEVJKf7kjXL4UZixgpI5ng"
           SCHEDULED_ERROR_FOLDER_ID: "1urPnVZY6_qcjANd-bJYv1rWTfXX9e0DO"
 
-          CATEGORY_ALLOWLIST: ${{ inputs.category }}
-          V2_PUBLISH_ENABLED: ${{ inputs.publish }}
-          V2_ACTIVATION_TOKEN: ${{ inputs.publish == 'true' && 'I_UNDERSTAND_V2_PUBLISHES' || '' }}
-          V2_MAX_UPLOADS_PER_RUN: "3"
+          CATEGORY_ALLOWLIST: ${{ github.event_name == 'schedule' && 'dog' || inputs.category }}
+          V2_PUBLISH_ENABLED: ${{ github.event_name == 'schedule' && 'true' || inputs.publish }}
+          V2_ACTIVATION_TOKEN: ${{ (github.event_name == 'schedule' || inputs.publish == 'true') && 'I_UNDERSTAND_V2_PUBLISHES' || '' }}
+          V2_MAX_UPLOADS_PER_RUN: ${{ github.event_name == 'schedule' && '1' || '3' }}
 
-          DOG_JOB_LIMIT_V2: "3"
+          DOG_JOB_LIMIT_V2: "1"
           MBTI_JOB_LIMIT_V2: "3"
           CAT_OTHER_JOB_LIMIT_V2: "3"
           NEWS_JOB_LIMIT_V2: "2"
           LONG_JOB_LIMIT_V2: "1"
 
           PUBLISH_DAY_CUTOFF_HOUR: "21"
-          DOG_PUBLISH_SLOTS_V2: "09:30,13:00,19:00"
+          DOG_PUBLISH_SLOTS_V2: "09:30"
           MBTI_PUBLISH_SLOTS_V2: "08:00,15:30,21:00"
           CAT_OTHER_PUBLISH_SLOTS_V2: "10:30,17:00,22:00"
           NEWS_PUBLISH_SLOTS_V2: "14:30,19:30,21:30"
