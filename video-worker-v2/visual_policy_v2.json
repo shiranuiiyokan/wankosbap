@@ -1,0 +1,58 @@
+{
+  "version": "2.0",
+  "people": {
+    "nationality": "Japanese",
+    "minimum_age": 18,
+    "candid_attraction_minimum_age": 20,
+    "camera_awareness": "prefer low or natural for candid scenes",
+    "style_mix": ["natural_candid", "clean_editorial", "explanatory_graphic"],
+    "avoid": [
+      "non-Japanese people",
+      "minors",
+      "voyeuristic hidden-camera framing",
+      "visible underwear used as the focus",
+      "explicit sexual posing",
+      "body-part emphasis unrelated to the story"
+    ]
+  },
+  "candid_attraction": {
+    "video_share_target": 0.30,
+    "preferred_placement": ["scene_02", "early_video"],
+    "purpose": "retention through ordinary human vulnerability and charm, not sexual content",
+    "examples": [
+      "unplanned glance away from camera",
+      "slightly embarrassed reaction",
+      "relaxed posture while caring for a dog",
+      "post-walk or at-home casual appearance",
+      "natural arm-up or floor-level pet-care movement when contextually appropriate"
+    ],
+    "avoid_topics": ["law", "disaster", "medical_warning", "serious_welfare_incident"]
+  },
+  "motion": {
+    "photo_zoom": false,
+    "photo_pan": false,
+    "allowed_when_readable": [
+      "text_fade",
+      "card_reveal",
+      "underline_reveal",
+      "comparison_step_reveal",
+      "chapter_title_transition",
+      "short_crossfade"
+    ],
+    "priority": "readability"
+  },
+  "photo_credit": {
+    "format": "Photo: {credit}",
+    "position": "lower_right",
+    "use_only_on_suitable_natural_photos": true,
+    "auto_rule": {
+      "dog_camera_gaze": "WANKO SNAP",
+      "otherwise": "rotating neutral initials"
+    }
+  },
+  "shorts": {
+    "target_seconds": [42, 58],
+    "visual_scene_range": [5, 8],
+    "rule": "do not pad or cut useful information merely to hit an exact scene count"
+  }
+}

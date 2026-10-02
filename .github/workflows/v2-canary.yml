@@ -1,0 +1,65 @@
+name: V2 read-only canary
+
+on:
+  schedule:
+    - cron: "45 11 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v2-read-only-canary
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install lightweight dependencies
+        run: |
+          pip install -r video-worker-v2/requirements.txt
+
+      - name: Start free local VOICEVOX engine
+        run: |
+          docker pull voicevox/voicevox_engine:cpu-latest
+          docker run -d --name voicevox -p 127.0.0.1:50021:50021 voicevox/voicevox_engine:cpu-latest
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:50021/version >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          docker logs voicevox
+          exit 1
+
+      - name: Preflight latest scheduled assets
+        working-directory: video-worker-v2
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          SCHEDULED_DOG_FOLDER_ID: "1tS_bBKMPmmqXq-ROYi9PvgYI2wit9FgZ"
+          SCHEDULED_MBTI_FOLDER_ID: "16tZkJMMCYbMiugO5pWfEeyvA5fGHXvR0"
+          SCHEDULED_CAT_FOLDER_ID: "1F2Dp0uhLNKbLcxDUatOz0QhJDnsabR8o"
+          SCHEDULED_LONG_FOLDER_ID: "1cmYcKgmQhj-LesauZ92BCS4-mC44fUBP"
+          V2_PICK: "latest"
+          V2_PREFLIGHT_ONLY: "true"
+          V2_STRICT_QC: "false"
+          V2_MIN_FREE_GB: "4"
+          SHORT_VOICE_SPEED_V2: "1.45"
+          LONG_VOICE_SPEED_V2: "1.20"
+        run: |
+          failures=0
+          for category in dog mbti cat_other long; do
+            echo "===== V2 CANARY: $category ====="
+            if ! V2_CATEGORY="$category" python shadow_worker.py; then
+              failures=$((failures+1))
+            fi
+          done
+          echo "V2_CANARY_EXECUTION_FAILURES=$failures"
+          # Canary is observation-only while v1 remains production.
+          # Quality failures are reported inside V2_SHADOW_RESULT and do not block v1.
+          exit 0
