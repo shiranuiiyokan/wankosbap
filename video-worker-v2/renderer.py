@@ -45,8 +45,14 @@ def media_duration(path: Path) -> float:
     return float(json.loads(out)["format"]["duration"])
 
 
-def _font_path(bold=True):
-    candidates = [
+def _font_path(bold=True, serif=False):
+    candidates = []
+    if serif:
+        candidates += [
+            "/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc" if bold else "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+        ]
+    candidates += [
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc" if bold else "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
@@ -58,8 +64,8 @@ def _font_path(bold=True):
     raise RuntimeError("CJK font not found")
 
 
-def _font(size: int, bold=True):
-    return ImageFont.truetype(_font_path(bold), size)
+def _font(size: int, bold=True, serif=False):
+    return ImageFont.truetype(_font_path(bold, serif), size)
 
 
 def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font, max_width: int) -> list[str]:
@@ -87,25 +93,38 @@ def _overlay_png(scene: dict, output: Path, width: int, height: int):
 
     text = str(scene.get("overlay_text") or "").strip()
     if text:
-        size = max(36, int(min(width, height) * 0.058))
-        font = _font(size, True)
-        max_width = int(width * 0.84)
+        role = str(scene.get("style_role") or "").lower()
+        serif = role in {"clean_editorial", "beauty_highlight"}
+        size = max(34, int(min(width, height) * 0.052))
+        font = _font(size, True, serif=serif)
+        max_width = int(width * 0.82)
         lines = _wrap_text(draw, text, font, max_width)
-        line_h = int(size * 1.35)
-        box_h = line_h * len(lines) + int(size * 0.60)
-        top = int(height * 0.07)
-        left = int(width * 0.08)
-        right = width - left
-        draw.rounded_rectangle(
-            (left, top, right, top + box_h),
-            radius=max(12, size // 4),
-            fill=(0, 0, 0, 142),
-        )
-        y = top + int(size * 0.25)
+        line_h = int(size * 1.42)
+        top = int(height * 0.065)
+        y = top
+
+        # Editorial V3: no large opaque caption box. Keep the visual dominant and
+        # use restrained shadow/stroke for legibility.
         for line in lines:
-            bbox = draw.textbbox((0, 0), line, font=font)
+            bbox = draw.textbbox((0, 0), line, font=font, stroke_width=max(1, size // 36))
             x = (width - (bbox[2] - bbox[0])) // 2
-            draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
+            stroke = max(2, size // 30)
+            draw.text(
+                (x + max(2, size // 32), y + max(2, size // 32)),
+                line,
+                font=font,
+                fill=(0, 0, 0, 112),
+                stroke_width=stroke,
+                stroke_fill=(0, 0, 0, 80),
+            )
+            draw.text(
+                (x, y),
+                line,
+                font=font,
+                fill=(255, 255, 255, 248),
+                stroke_width=max(1, stroke // 2),
+                stroke_fill=(0, 0, 0, 105),
+            )
             y += line_h
 
     credit = scene.get("photo_credit")
@@ -132,11 +151,21 @@ def _sanitize_image(path: Path, output: Path, width: int, height: int):
     with Image.open(path) as source:
         source.load()
         source = ImageOps.exif_transpose(source).convert("RGB")
-        contained = ImageOps.contain(source, (width, height), Image.Resampling.LANCZOS)
-        canvas = Image.new("RGB", (width, height), "white")
-        x = (width - contained.width) // 2
-        y = (height - contained.height) // 2
-        canvas.paste(contained, (x, y))
+        if height > width:
+            # Shorts are full-bleed by design. Never create a small centered
+            # picture surrounded by filler just to satisfy 9:16.
+            canvas = ImageOps.fit(
+                source,
+                (width, height),
+                method=Image.Resampling.LANCZOS,
+                centering=(0.5, 0.5),
+            )
+        else:
+            contained = ImageOps.contain(source, (width, height), Image.Resampling.LANCZOS)
+            canvas = Image.new("RGB", (width, height), "white")
+            x = (width - contained.width) // 2
+            y = (height - contained.height) // 2
+            canvas.paste(contained, (x, y))
         canvas.save(output, "JPEG", quality=94, subsampling=0)
     return output
 
