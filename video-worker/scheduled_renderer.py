@@ -99,19 +99,31 @@ def _cjk_fontfile() -> str:
 
 
 def _video_filter(width: int, height: int, overlay_textfile: Path | None = None) -> str:
-    filters = [
-        f"scale={width}:{height}:force_original_aspect_ratio=decrease",
-        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:white",
-        "setsar=1",
-        f"fps={FPS}",
-    ]
+    # Portrait Shorts must fill the 9:16 canvas. Do not shrink the source into a
+    # small centered frame with filler around it.
+    if height > width:
+        filters = [
+            f"scale={width}:{height}:force_original_aspect_ratio=increase",
+            f"crop={width}:{height}",
+            "setsar=1",
+            f"fps={FPS}",
+        ]
+    else:
+        filters = [
+            f"scale={width}:{height}:force_original_aspect_ratio=decrease",
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:white",
+            "setsar=1",
+            f"fps={FPS}",
+        ]
+
     if overlay_textfile is not None:
         fontfile = _escape_filter_path(Path(_cjk_fontfile()))
         textfile = _escape_filter_path(overlay_textfile)
-        fontsize = max(44, int(min(width, height) * 0.066))
-        top_margin = int(height * 0.08)
-        border = max(14, int(fontsize * 0.30))
-        line_spacing = max(8, int(fontsize * 0.12))
+        fontsize = max(40, int(min(width, height) * 0.056))
+        top_margin = int(height * 0.065)
+        line_spacing = max(8, int(fontsize * 0.18))
+        outline = max(2, int(fontsize * 0.035))
+        shadow = max(2, int(fontsize * 0.035))
         filters.append(
             "drawtext="
             f"fontfile='{fontfile}':"
@@ -119,8 +131,8 @@ def _video_filter(width: int, height: int, overlay_textfile: Path | None = None)
             "fontcolor=white:"
             f"fontsize={fontsize}:"
             f"line_spacing={line_spacing}:"
-            "box=1:boxcolor=black@0.56:"
-            f"boxborderw={border}:"
+            f"borderw={outline}:bordercolor=black@0.48:"
+            f"shadowx={shadow}:shadowy={shadow}:shadowcolor=black@0.35:"
             "x=(w-text_w)/2:"
             f"y={top_margin}"
         )
